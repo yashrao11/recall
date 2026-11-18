@@ -35,7 +35,7 @@ def mount_folder(payload: FolderMountRequest, request: Request) -> dict:
             if "UNIQUE constraint failed" in str(exc):
                 raise HTTPException(status_code=409, detail="folder is already mounted") from exc
             raise
-        scan_summary = sync_mount(connection, int(cursor.lastrowid), folder)
+        scan_summary = sync_mount(connection, int(cursor.lastrowid), folder, request.app.state.settings)
 
     return {
         "mount_id": cursor.lastrowid,
@@ -87,7 +87,7 @@ def delete_source(source_id: int, request: Request) -> None:
         visual_store.remove_many(unit_ids)
         text_store.persist()
         visual_store.persist()
-    except VectorStoreUnavailable:
+    except (VectorStoreUnavailable, RuntimeError, ValueError):
         pass
     thumbnail_dir = settings.derived_dir / "thumbnails" / str(source_id)
     if thumbnail_dir.exists():

@@ -39,6 +39,7 @@ class FaissVectorStore:
 
     def add(self, unit_id: int, vector: list[float]) -> None:
         array = self._np.asarray([vector], dtype="float32")
+        self._validate_vector(array)
         if self._faiss is None:
             self.remove(unit_id)
             norm = self._np.linalg.norm(array, axis=1, keepdims=True)
@@ -71,17 +72,19 @@ class FaissVectorStore:
             self._index.remove_ids(ids)
 
     def search(self, vector: list[float], top_k: int = 50) -> list[tuple[int, float]]:
+        query_array = self._np.asarray(vector, dtype="float32")
+        self._validate_vector(query_array.reshape(1, -1))
         if self._faiss is None:
             if not len(self._index["ids"]):
                 return []
-            query = self._np.asarray(vector, dtype="float32")
+            query = query_array
             query = query / max(float(self._np.linalg.norm(query)), 1e-12)
             scores = self._index["vectors"] @ query
             order = self._np.argsort(-scores)[:top_k]
             return [(int(self._index["ids"][i]), float(scores[i])) for i in order]
         if not self._index.ntotal:
             return []
-        query = self._np.asarray([vector], dtype="float32")
+        query = query_array.reshape(1, -1)
         self._faiss.normalize_L2(query)
         scores, ids = self._index.search(query, min(top_k, self._index.ntotal))
         return [(int(unit_id), float(score)) for unit_id, score in zip(ids[0], scores[0]) if unit_id != -1]
@@ -95,4 +98,10 @@ class FaissVectorStore:
             )
         else:
             self._faiss.write_index(self._index, str(self.path))
+
+    def _validate_vector(self, array) -> None:
+        if array.ndim != 2 or array.shape != (1, self.dimension):
+            raise ValueError(
+                f"vector dimension mismatch: expected {self.dimension}, got {array.shape[-1] if array.ndim else 0}"
+            )
 

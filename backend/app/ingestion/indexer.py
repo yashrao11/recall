@@ -226,10 +226,13 @@ def _set_source_status(settings: Settings, source_id: int, status: str, detail: 
 def _clear_source_derived_data(settings: Settings, source_id: int) -> None:
     with get_connection(settings.database_path) as connection:
         old_units = connection.execute(
-            "SELECT unit_id FROM document_units WHERE source_id = ?", (source_id,)
+            "SELECT unit_id, thumbnail_path FROM document_units WHERE source_id = ?", (source_id,)
         ).fetchall()
         old_ids = [int(row["unit_id"]) for row in old_units]
+        old_thumbnails = [row["thumbnail_path"] for row in old_units if row["thumbnail_path"]]
         _remove_source_derived_rows(connection, source_id)
+    for relative in old_thumbnails:
+        _remove_derived_file(settings, relative)
     if not old_ids:
         return
     # Keep vector stores consistent with the committed SQL cleanup. NumPy is
@@ -245,6 +248,17 @@ def _clear_source_derived_data(settings: Settings, source_id: int) -> None:
             store.persist()
     except (VectorStoreUnavailable, RuntimeError, ValueError):
         pass
+
+
+def _remove_derived_file(settings: Settings, relative_path: str) -> None:
+    derived_root = settings.derived_dir.resolve()
+    candidate = (settings.derived_dir / relative_path).resolve()
+    try:
+        candidate.relative_to(derived_root)
+    except ValueError:
+        return
+    if candidate.is_file() or candidate.is_symlink():
+        candidate.unlink()
 
 
 def _result_detail(result: dict[str, object]) -> str | None:
