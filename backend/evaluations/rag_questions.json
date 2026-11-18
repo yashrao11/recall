@@ -1,0 +1,30 @@
+[
+  {
+    "id": "answerable-page-reference",
+    "question": "What does the architecture note say improves gradient flow?",
+    "category": "answerable",
+    "requires_page_reference": true,
+    "expected_evidence": ["architecture-notes.pdf"]
+  },
+  {
+    "id": "multi-document-comparison",
+    "question": "How do the two documents differ in the examples they describe?",
+    "category": "multi_document_comparison",
+    "requires_page_reference": false,
+    "expected_evidence": ["one.pdf", "two.pdf"]
+  },
+  {
+    "id": "vague-semantic-retrieval",
+    "question": "Which note discusses reducing spatial dimensions?",
+    "category": "vague_semantic_query",
+    "requires_page_reference": true,
+    "expected_evidence": ["notes.pdf"]
+  },
+  {
+    "id": "unanswerable",
+    "question": "What was the result of my private experiment that is not indexed?",
+    "category": "unanswerable",
+    "requires_page_reference": false,
+    "expected_evidence": []
+  }
+]

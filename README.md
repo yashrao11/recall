@@ -417,8 +417,9 @@ then search.
 | Variable | Purpose |
 |---|---|
 | `DATA_DIR` | Where the index, thumbnails and database are stored |
-| `LLM_PROVIDER` | `anthropic`, `openai` or `ollama` |
-| `LLM_API_KEY` | Key for the chosen cloud provider |
+| `LLM_PROVIDER` | `gemini` (Ask My Memory generation provider) |
+| `GEMINI_GENERATION_MODEL` | Configurable Gemini generation model; defaults to `gemini-3.1-flash-lite` |
+| `GEMINI_API_KEY` | Gemini API key, used only when cloud AI is explicitly enabled |
 | `ALLOW_CLOUD_AI` | `false` by default; must be enabled to send content to a cloud LLM |
 | `VISUAL_MODEL` | `colqwen2`, `colpali` or `siglip` |
 
@@ -427,13 +428,17 @@ then search.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | POST | `/sources/folders` | Mount a folder |
+| POST | `/ask` | Grounded question answering with verified citations |
+| GET | `/conversations` | List locally stored conversations |
+| GET | `/conversations/{id}` | Read a conversation and its messages |
+| GET | `/conversations/{id}/messages` | Paginate conversation messages |
+| DELETE | `/conversations/{id}` | Delete a local conversation |
 | DELETE | `/sources/{id}` | Remove a source and its derived data |
 | POST | `/index/pause` / `/index/resume` | Control background indexing |
 | GET | `/index/status` | Indexing progress and errors |
 | GET | `/search?q=...&filters=...` | Hybrid search |
 | GET | `/units/{id}` | Page, slide or chunk with source info |
 | GET | `/calendar?view=month&date=...` | Memory events grouped by date |
-| POST | `/ask` | Grounded question answering with citations |
 | GET | `/graph` | Objects and relationships |
 | PATCH | `/relationships/{id}` | Confirm, edit or delete a link |
 | POST | `/study/generate` | Create flashcards and quizzes from sources |

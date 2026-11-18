@@ -286,16 +286,31 @@ def provider_status(settings: Settings) -> dict[str, object]:
     else:
         active_metadata = "local-heuristic"
 
+    generation_configured = settings.llm_provider.lower() in {"gemini", "google"}
+    generation_operational = bool(
+        settings.allow_cloud_ai and settings.gemini_api_key and has_gemini_package and generation_configured
+    )
+    active_generation = (
+        "gemini"
+        if generation_operational
+        else "disabled (cloud AI disabled)"
+        if not settings.allow_cloud_ai
+        else f"{settings.llm_provider} (unavailable)"
+    )
+
     return {
         "cloud_ai_permitted": settings.allow_cloud_ai,
         "active_embedding_provider": active_embedding,
         "active_metadata_provider": active_metadata,
+        "active_generation_provider": active_generation,
+        "generation_model": settings.gemini_generation_model,
         "local_fallback_availability": {
             "keyword_search": True,
             "metadata_heuristic": True,
             "bge": has_bge_package,
         },
         "embedding_operational": embedding_operational,
+        "generation_operational": generation_operational,
         "visual_retrieval_operational": (
             configured_embedding == "gemini"
             and settings.allow_cloud_ai

@@ -80,6 +80,24 @@ CREATE TABLE IF NOT EXISTS api_cache (
 
 CREATE INDEX IF NOT EXISTS idx_api_cache_content ON api_cache(content_hash);
 
+CREATE TABLE IF NOT EXISTS conversations (
+    conversation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT 'New conversation',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    content TEXT NOT NULL,
+    citations_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at, message_id);
+
 CREATE TABLE IF NOT EXISTS memory_events (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
