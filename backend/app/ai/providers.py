@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import hashlib
 import importlib.util
 import json
+import math
 import re
 from typing import Protocol
 
@@ -75,7 +76,19 @@ class GeminiProvider:
 
     def embed_text(self, text: str, content_hash: str, connection: sqlite3.Connection) -> list[float]:
         self._ensure_cloud_allowed()
-        return self._embed(text, content_hash, connection)
+        # Embedding 2 uses document formatting for corpus items in asymmetric
+        # retrieval. Titles are added by the indexer at the source level where
+        # available; this provider-level fallback remains valid for untitled units.
+        return self._embed(
+            f"title: none | text: {text}", content_hash, connection, operation="embed_text"
+        )
+
+    def embed_query(self, query: str, content_hash: str, connection: sqlite3.Connection) -> list[float]:
+        """Embed a retrieval query using Embedding 2's asymmetric query format."""
+        self._ensure_cloud_allowed()
+        return self._embed(
+            f"task: search result | query: {query}", content_hash, connection, operation="embed_query"
+        )
 
     def embed_image(
         self, image_bytes: bytes, mime_type: str, content_hash: str, connection: sqlite3.Connection
@@ -89,10 +102,10 @@ class GeminiProvider:
 
         result = self._client.models.embed_content(
             model=self.model,
-            contents=types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type)],
             config=types.EmbedContentConfig(output_dimensionality=self.dimension),
         )
-        values = _extract_embedding(result)
+        values = _validated_embedding(_extract_embedding(result), self.dimension)
         put_cached_response(connection, key, content_hash, self.name, "embed_image", values)
         return values
 
@@ -128,11 +141,17 @@ class GeminiProvider:
         )
         return comment, tags
 
-    def _embed(self, text: str, content_hash: str, connection: sqlite3.Connection) -> list[float]:
-        key = cache_key(self.name, "embed_text", content_hash)
+    def _embed(
+        self,
+        text: str,
+        content_hash: str,
+        connection: sqlite3.Connection,
+        operation: str,
+    ) -> list[float]:
+        key = cache_key(self.name, operation, content_hash)
         cached = get_cached_response(connection, key)
         if cached is not None:
-            return [float(value) for value in cached]
+            return _validated_embedding([float(value) for value in cached], self.dimension)
         from google.genai import types
 
         result = self._client.models.embed_content(
@@ -140,8 +159,8 @@ class GeminiProvider:
             contents=text,
             config=types.EmbedContentConfig(output_dimensionality=self.dimension),
         )
-        values = _extract_embedding(result)
-        put_cached_response(connection, key, content_hash, self.name, "embed_text", values)
+        values = _validated_embedding(_extract_embedding(result), self.dimension)
+        put_cached_response(connection, key, content_hash, self.name, operation, values)
         return values
 
 
@@ -299,6 +318,20 @@ def _extract_embedding(result: object) -> list[float]:
     if values is None:
         raise RuntimeError("Gemini returned an embedding without values")
     return [float(value) for value in values]
+
+
+def _validated_embedding(values: list[float], dimension: int) -> list[float]:
+    if len(values) != dimension:
+        raise RuntimeError(f"Gemini returned dimension {len(values)}; expected {dimension}")
+    if not all(math.isfinite(value) for value in values):
+        raise RuntimeError("Gemini returned a non-finite embedding value")
+    norm = math.sqrt(sum(value * value for value in values))
+    if norm <= 0:
+        raise RuntimeError("Gemini returned a zero-norm embedding")
+    # Embedding 2 normalizes reduced-dimensional outputs server-side. Applying
+    # the same normalization locally makes the invariant explicit and protects
+    # callers if the API returns a slightly different representation.
+    return [value / norm for value in values]
 
 
 def _normalise_tags(tags: object) -> list[str]:

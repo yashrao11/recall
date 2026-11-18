@@ -19,7 +19,12 @@ def vector_search(
     top_k: int = 50,
 ) -> list[dict]:
     query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
-    vector = provider.embed_text(query, query_hash, connection)
+    embed_query = getattr(provider, "embed_query", None)
+    vector = (
+        embed_query(query, query_hash, connection)
+        if callable(embed_query)
+        else provider.embed_text(query, query_hash, connection)
+    )
     index_name = "visual.index" if mode == "visual" else "text.index"
     store = FaissVectorStore(settings.data_dir / index_name, provider.dimension)
     ranked = store.search(vector, top_k)
