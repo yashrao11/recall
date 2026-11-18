@@ -134,6 +134,7 @@ def test_configuration_status_is_safe(tmp_path: Path) -> None:
         payload = client.get("/index/config").json()
     assert payload["cloud_ai_permitted"] is False
     assert payload["embedding_operational"] is False
+    assert payload["visual_retrieval_operational"] is False
     assert payload["active_embedding_provider"] == "disabled (cloud AI disabled)"
     assert "do-not-leak" not in str(payload)
     assert "api_key" not in str(payload).lower()

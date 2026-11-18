@@ -1,0 +1,72 @@
+[
+  {
+    "id": "diagram_cnn_pooling",
+    "query": "Find the CNN diagram showing max pooling.",
+    "query_type": "diagram",
+    "relevant_concepts": ["cnn", "convolutional neural network", "max pooling"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "diagram_skip_connections",
+    "query": "Find a neural network architecture with skip connections.",
+    "query_type": "diagram",
+    "relevant_concepts": ["neural network", "architecture", "skip connections", "residual"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "chart_accuracy_cost",
+    "query": "Find the chart comparing model accuracy against computational cost.",
+    "query_type": "chart",
+    "relevant_concepts": ["accuracy", "computational cost", "model comparison", "chart"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "chart_training_loss",
+    "query": "Find the plot showing training loss falling over epochs.",
+    "query_type": "chart",
+    "relevant_concepts": ["training loss", "epochs", "learning curve", "plot"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "flowchart_authentication",
+    "query": "Find the flowchart explaining authentication.",
+    "query_type": "flowchart",
+    "relevant_concepts": ["authentication", "login", "verification", "flowchart"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "flowchart_data_pipeline",
+    "query": "Find the process diagram for the data ingestion pipeline.",
+    "query_type": "flowchart",
+    "relevant_concepts": ["data ingestion", "pipeline", "processing stages", "flowchart"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "screenshot_weighted_graph",
+    "query": "Find a screenshot containing a weighted graph.",
+    "query_type": "screenshot",
+    "relevant_concepts": ["weighted graph", "nodes", "edges", "edge weights"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "screenshot_dashboard",
+    "query": "Find the dashboard image with a latency and throughput comparison.",
+    "query_type": "screenshot",
+    "relevant_concepts": ["dashboard", "latency", "throughput", "comparison"],
+    "label": "visual-primary"
+  },
+  {
+    "id": "diagram_attention",
+    "query": "Find the picture that explains how tokens attend to one another.",
+    "query_type": "diagram",
+    "relevant_concepts": ["attention", "tokens", "self-attention", "transformer"],
+    "label": "wording-differs-from-image-text"
+  },
+  {
+    "id": "chart_confusion_matrix",
+    "query": "Find the colored grid that summarizes classification mistakes.",
+    "query_type": "chart",
+    "relevant_concepts": ["confusion matrix", "classification", "true positives", "false negatives"],
+    "label": "wording-differs-from-image-text"
+  }
+]

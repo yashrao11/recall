@@ -28,6 +28,7 @@ class ProviderConfigurationError(ProviderUnavailable):
 class EmbeddingProvider(Protocol):
     name: str
     dimension: int
+    supports_visual: bool
 
     def embed_text(self, text: str, content_hash: str, connection: sqlite3.Connection) -> list[float]: ...
 
@@ -53,6 +54,7 @@ class GeminiProvider:
     metadata_model: str = "gemini-2.5-flash"
     dimension: int = 768
     name: str = "gemini"
+    supports_visual: bool = True
 
     def __post_init__(self) -> None:
         self._ensure_cloud_allowed()
@@ -148,6 +150,7 @@ class BGEProvider:
     model_name: str = "BAAI/bge-base-en-v1.5"
     dimension: int = 768
     name: str = "bge"
+    supports_visual: bool = False
 
     def __post_init__(self) -> None:
         try:
@@ -274,6 +277,12 @@ def provider_status(settings: Settings) -> dict[str, object]:
             "bge": has_bge_package,
         },
         "embedding_operational": embedding_operational,
+        "visual_retrieval_operational": (
+            configured_embedding == "gemini"
+            and settings.allow_cloud_ai
+            and bool(settings.gemini_api_key)
+            and has_gemini_package
+        ),
         "message": (
             "Cloud AI is disabled; only local keyword search and local metadata fallback are active"
             if not settings.allow_cloud_ai

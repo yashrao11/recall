@@ -29,7 +29,7 @@ def vector_search(
     placeholders = ",".join("?" for _ in ids)
     rows = connection.execute(
         "SELECT u.unit_id, u.source_id, u.page_or_slide, u.short_comment, u.tags_json, "
-        "s.title, s.source_type, u.thumbnail_path "
+        "s.title, s.source_type, s.original_path, u.thumbnail_path "
         f"FROM document_units u JOIN sources s ON s.source_id = u.source_id WHERE u.unit_id IN ({placeholders})",
         ids,
     ).fetchall()

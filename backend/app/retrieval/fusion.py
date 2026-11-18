@@ -15,6 +15,7 @@ def reciprocal_rank_fusion(result_lists: list[list[dict]], k: int = 60) -> list[
     for unit_id, result in merged.items():
         result["score"] = scores[unit_id]
         result["match_type"] = sorted(match_types[unit_id])
+        result["visual_match"] = "visual" in match_types[unit_id]
         output.append(result)
     return sorted(output, key=lambda item: item["score"], reverse=True)
 

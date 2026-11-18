@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from pathlib import Path
 
 
 def sanitise_fts_query(query: str) -> str:
@@ -66,12 +67,14 @@ def _result(row: dict, match_type: str, score: float) -> dict:
         "source_id": row["source_id"],
         "title": row["title"],
         "source_type": row["source_type"],
+        "filename": Path(row["original_path"]).name if row.get("original_path") else None,
         "page": row["page_or_slide"],
         "snippet": row.get("snippet") or row.get("short_comment", ""),
         "short_comment": row.get("short_comment", ""),
         "tags": json.loads(row.get("tags_json", "[]")),
         "thumbnail_url": f"/units/{row['unit_id']}/thumbnail" if row.get("thumbnail_path") else None,
         "match_type": [match_type],
+        "visual_match": match_type == "visual",
         "score": float(score),
     }
 
