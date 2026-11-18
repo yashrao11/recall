@@ -1,8 +1,20 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 import sqlite3
 import json
 from pathlib import Path
+
+
+MEMORY_EVENT_TYPES = {
+    "file_imported",
+    "file_modified",
+    "webpage_saved",
+    "note_created",
+    "screenshot_captured",
+    "study_session_completed",
+    "memory_revisited",
+}
 
 
 SCHEMA = """
@@ -73,7 +85,9 @@ CREATE TABLE IF NOT EXISTS memory_events (
     event_type TEXT NOT NULL,
     source_id INTEGER REFERENCES sources(source_id) ON DELETE CASCADE,
     timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    date_basis TEXT NOT NULL
+    date_basis TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS objects (
@@ -171,6 +185,17 @@ def _migrate_legacy_schema(connection: sqlite3.Connection) -> None:
     if "tags_json" not in columns:
         connection.execute("ALTER TABLE document_units ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'")
 
+    event_columns = {row["name"] for row in connection.execute("PRAGMA table_info(memory_events)")}
+    if "metadata_json" not in event_columns:
+        connection.execute("ALTER TABLE memory_events ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
+    if "created_at" not in event_columns:
+        connection.execute(
+            "ALTER TABLE memory_events ADD COLUMN created_at TEXT NOT NULL DEFAULT ''"
+        )
+        connection.execute(
+            "UPDATE memory_events SET created_at = CURRENT_TIMESTAMP WHERE created_at = ''"
+        )
+
     # ``skipped`` was used by the initial scanner implementation. It is now
     # represented as pending so the status vocabulary remains finite and the
     # source can be retried if the mounted file returns.
@@ -213,6 +238,41 @@ def put_cached_response(
         "(cache_key, content_hash, provider, operation, response_json) VALUES (?, ?, ?, ?, ?)",
         (key, content_hash, provider, operation, json.dumps(response)),
     )
+
+
+def record_memory_event(
+    connection: sqlite3.Connection,
+    event_type: str,
+    source_id: int | None = None,
+    timestamp: datetime | str | None = None,
+    date_basis: str = "event_at",
+    metadata: dict[str, object] | None = None,
+    created_at: datetime | str | None = None,
+) -> int:
+    """Persist one genuine event using UTC timestamps and structured metadata."""
+    if event_type not in MEMORY_EVENT_TYPES:
+        raise ValueError(f"unsupported memory event type: {event_type}")
+    event_timestamp = _utc_iso(timestamp)
+    event_created_at = _utc_iso(created_at) if created_at is not None else None
+    cursor = connection.execute(
+        "INSERT INTO memory_events "
+        "(event_type, source_id, timestamp, date_basis, metadata_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))",
+        (event_type, source_id, event_timestamp, date_basis, json.dumps(metadata or {}), event_created_at),
+    )
+    return int(cursor.lastrowid)
+
+
+def _utc_iso(value: datetime | str | None) -> str:
+    if value is None:
+        parsed = datetime.now(UTC)
+    elif isinstance(value, datetime):
+        parsed = value if value.tzinfo else value.replace(tzinfo=UTC)
+    else:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat()
 
 
 @contextmanager

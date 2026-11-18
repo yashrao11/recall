@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 import hashlib
 from pathlib import Path
 import mimetypes
@@ -29,6 +29,7 @@ class DiscoveredFile:
     source_type: str
     mime_type: str | None
     content_hash: str
+    created_at: str
     modified_at: str
 
 
@@ -49,13 +50,15 @@ def discover_files(folder: Path) -> list[DiscoveredFile]:
         if source_type is None:
             continue
         stat = path.stat()
+        created_timestamp = getattr(stat, "st_birthtime", stat.st_ctime)
         discovered.append(
             DiscoveredFile(
                 path=path.resolve(),
                 source_type=source_type,
                 mime_type=mimetypes.guess_type(path.name)[0],
                 content_hash=sha256_file(path),
-                modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                created_at=datetime.fromtimestamp(created_timestamp, UTC).isoformat(),
+                modified_at=datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
             )
         )
     return discovered
@@ -82,9 +85,10 @@ def sync_mount(
         if previous is None:
             connection.execute(
                 "INSERT INTO sources "
-                "(mount_id, source_type, title, original_path, mime_type, content_hash, modified_at, indexing_status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')",
-                (mount_id, item.source_type, item.path.name, path, item.mime_type, item.content_hash, item.modified_at),
+                "(mount_id, source_type, title, original_path, mime_type, content_hash, created_at, modified_at, indexing_status) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+                (mount_id, item.source_type, item.path.name, path, item.mime_type, item.content_hash,
+                 item.created_at, item.modified_at),
             )
             added += 1
         elif previous["content_hash"] != item.content_hash:

@@ -7,6 +7,7 @@ from app.api.sources import router as sources_router
 from app.api.status import router as status_router
 from app.api.units import router as units_router
 from app.api.search import router as search_router
+from app.api.calendar import router as calendar_router
 from app.config import Settings, get_settings
 from app.db.database import initialize_database
 
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(status_router)
     app.include_router(units_router)
     app.include_router(search_router)
+    app.include_router(calendar_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict:

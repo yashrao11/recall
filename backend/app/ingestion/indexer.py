@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import hashlib
 import json
 from pathlib import Path
@@ -8,6 +9,7 @@ import sqlite3
 from app.ai.providers import EmbeddingProvider, LocalMetadataProvider, ProviderUnavailable, UnitMetadataProvider
 from app.config import Settings
 from app.db.database import get_connection
+from app.db.database import record_memory_event
 from app.ingestion.chunker import chunk_text
 from app.ingestion.extractor import ExtractedUnit, extract_file
 from app.retrieval.vector_store import FaissVectorStore, VectorStoreUnavailable
@@ -36,7 +38,12 @@ def index_source(
             result = _index_source_in_transaction(
                 connection, source, settings, embedding_provider, metadata_provider
             )
-        _set_source_status(settings, source_id, str(result["status"]), _result_detail(result))
+            if result["status"] in {"done", "partial"}:
+                _record_source_event(connection, source, result)
+            connection.execute(
+                "UPDATE sources SET indexing_status = ?, indexing_error = ? WHERE source_id = ?",
+                (str(result["status"]), _result_detail(result), source_id),
+            )
         return result
     except Exception as exc:
         # A fresh transaction makes the error status durable after rollback.
@@ -221,6 +228,49 @@ def _set_source_status(settings: Settings, source_id: int, status: str, detail: 
             "UPDATE sources SET indexing_status = ?, indexing_error = ? WHERE source_id = ?",
             (status, detail, source_id),
         )
+
+
+def _record_source_event(connection: sqlite3.Connection, source: sqlite3.Row, result: dict[str, object]) -> None:
+    source_id = int(source["source_id"])
+    latest = connection.execute(
+        "SELECT event_type, metadata_json FROM memory_events "
+        "WHERE source_id = ? AND event_type IN ('file_imported', 'file_modified') "
+        "ORDER BY event_id DESC LIMIT 1",
+        (source_id,),
+    ).fetchone()
+    latest_hash = None
+    if latest is not None:
+        latest_hash = json.loads(latest["metadata_json"]).get("content_hash")
+    if latest is not None and latest_hash == source["content_hash"]:
+        return
+
+    event_type = "file_imported" if latest is None else "file_modified"
+    timestamp = datetime.now(UTC)
+    date_basis = "imported_at"
+    if event_type == "file_modified" and source["modified_at"]:
+        timestamp = _as_utc_datetime(source["modified_at"])
+        date_basis = "modified_at"
+    metadata = {
+        "source_title": source["title"],
+        "source_type": source["source_type"],
+        "content_hash": source["content_hash"],
+        "original_created_at": source["created_at"],
+        "original_modified_at": source["modified_at"],
+        "units_created": result["units_created"],
+    }
+    record_memory_event(
+        connection,
+        event_type,
+        source_id=source_id,
+        timestamp=timestamp,
+        date_basis=date_basis,
+        metadata=metadata,
+    )
+
+
+def _as_utc_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 def _clear_source_derived_data(settings: Settings, source_id: int) -> None:
