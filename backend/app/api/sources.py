@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.db.database import get_connection
 from app.ingestion.scanner import sync_mount
+from app.knowledge.discovery import reconcile_automatic_knowledge
 from app.retrieval.vector_store import FaissVectorStore, VectorStoreUnavailable
 
 router = APIRouter(prefix="/sources", tags=["sources"])
@@ -80,6 +81,7 @@ def delete_source(source_id: int, request: Request) -> None:
         ]
         connection.execute("DELETE FROM fts_units WHERE source_id = ?", (source_id,))
         connection.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+        reconcile_automatic_knowledge(connection)
     try:
         text_store = FaissVectorStore(settings.data_dir / "text.index", settings.embedding_dimension)
         visual_store = FaissVectorStore(settings.data_dir / "visual.index", settings.embedding_dimension)

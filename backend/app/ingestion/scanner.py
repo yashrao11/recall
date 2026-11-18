@@ -8,6 +8,7 @@ import sqlite3
 import shutil
 
 from app.retrieval.vector_store import FaissVectorStore, VectorStoreUnavailable
+from app.knowledge.discovery import clear_automatic_source_evidence
 
 
 SUPPORTED_EXTENSIONS = {
@@ -115,6 +116,7 @@ def sync_mount(
                 "WHERE source_id = ?",
                 (row["source_id"],),
             )
+            clear_automatic_source_evidence(connection, int(row["source_id"]))
             if settings is not None:
                 _remove_source_vectors(settings, unit_ids)
                 thumbnail_dir = settings.derived_dir / "thumbnails" / str(row["source_id"])

@@ -12,6 +12,7 @@ from app.db.database import get_connection
 from app.db.database import record_memory_event
 from app.ingestion.chunker import chunk_text
 from app.ingestion.extractor import ExtractedUnit, extract_file
+from app.knowledge.discovery import clear_automatic_source_evidence, discover_source
 from app.retrieval.vector_store import FaissVectorStore, VectorStoreUnavailable
 
 
@@ -65,6 +66,7 @@ def _index_source_in_transaction(
     text_embeddings_created = 0
     visual_embeddings_created = 0
     unit_count = 0
+    discovery_result: dict[str, int] = {}
 
     if embedding_provider is None:
         warnings.append(
@@ -156,6 +158,8 @@ def _index_source_in_transaction(
                 except (ProviderUnavailable, RuntimeError, ValueError, VectorStoreUnavailable) as exc:
                     errors.append(f"Visual embedding failed for unit {unit_id}: {exc}")
 
+    discovery_result = discover_source(connection, source_id).as_dict()
+
     for store, label in ((text_store, "text"), (visual_store, "visual")):
         if store is not None:
             try:
@@ -178,6 +182,7 @@ def _index_source_in_transaction(
         "units": unit_count,
         "embeddings": text_embeddings_created + visual_embeddings_created,
         "warning": warnings[0] if warnings else "",
+        **discovery_result,
     }
     return result
 
@@ -320,6 +325,7 @@ def _result_detail(result: dict[str, object]) -> str | None:
 def _remove_source_derived_rows(connection: sqlite3.Connection, source_id: int) -> None:
     connection.execute("DELETE FROM fts_units WHERE source_id = ?", (source_id,))
     connection.execute("DELETE FROM document_units WHERE source_id = ?", (source_id,))
+    clear_automatic_source_evidence(connection, source_id)
 
 
 def _write_thumbnail(settings: Settings, source_id: int, unit_id: int, extracted: ExtractedUnit) -> str | None:
