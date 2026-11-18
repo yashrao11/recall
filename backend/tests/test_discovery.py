@@ -187,8 +187,13 @@ def test_reindex_removes_old_automatic_support_but_preserves_manual_knowledge(tm
     index_source(source_id, settings, None, EmptyMetadataProvider())
     with get_connection(settings.database_path) as connection:
         assert connection.execute(
-            "SELECT COUNT(*) FROM relationships WHERE created_by = 'system'"
+            "SELECT COUNT(*) FROM relationships WHERE created_by = 'system' "
+            "AND reviewed_status <> 'unsupported'"
         ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM relationships WHERE created_by = 'system' "
+            "AND reviewed_status = 'unsupported'"
+        ).fetchone()[0] == 1
         assert connection.execute(
             "SELECT COUNT(*) FROM relationships WHERE created_by = 'user'"
         ).fetchone()[0] == 1
@@ -238,7 +243,12 @@ def test_source_deletion_removes_support_and_deactivates_only_automatic_entities
         from app.knowledge.discovery import reconcile_automatic_knowledge
         reconcile_automatic_knowledge(connection)
         assert connection.execute("SELECT COUNT(*) FROM relationship_evidence").fetchone()[0] == 0
-        assert connection.execute("SELECT COUNT(*) FROM relationships").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM relationships WHERE reviewed_status <> 'unsupported'"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM relationships WHERE reviewed_status = 'unsupported'"
+        ).fetchone()[0] == 1
         assert connection.execute(
             "SELECT status FROM objects WHERE object_id = ?", (auto_id,)
         ).fetchone()[0] == "inactive"

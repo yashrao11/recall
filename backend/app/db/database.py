@@ -183,6 +183,7 @@ INITIAL_RELATIONSHIP_TYPES = {
 
 MIGRATIONS = (
     (1, "knowledge_connections_schema_hardening", "_migration_knowledge_connections_v1"),
+    (2, "relationship_unsupported_review_status", "_migration_relationship_unsupported_v2"),
 )
 
 
@@ -503,6 +504,80 @@ def _migration_knowledge_connections_v1(connection: sqlite3.Connection) -> None:
         raise MigrationConflict(f"foreign-key check failed with {len(violations)} violation(s)")
 
 
+def _migration_relationship_unsupported_v2(connection: sqlite3.Connection) -> None:
+    """Allow automatic relationships to retain an explicit unsupported state."""
+    relationship_rows = connection.execute(
+        "SELECT relationship_id, from_object_id, to_object_id, relationship_type, is_symmetric, "
+        "identity_a, identity_b, confidence, created_by, discovery_method, reviewed_status, "
+        "explanation, created_at, updated_at FROM relationships ORDER BY relationship_id"
+    ).fetchall()
+    evidence_rows = connection.execute(
+        "SELECT evidence_id, relationship_id, source_id, unit_id, discovery_method, confidence, created_at "
+        "FROM relationship_evidence ORDER BY evidence_id"
+    ).fetchall()
+    connection.execute(
+        "CREATE TABLE relationships__v2 ("
+        "relationship_id INTEGER PRIMARY KEY AUTOINCREMENT, from_object_id INTEGER NOT NULL, "
+        "to_object_id INTEGER NOT NULL, relationship_type TEXT NOT NULL, "
+        "is_symmetric INTEGER NOT NULL CHECK (is_symmetric IN (0, 1)), "
+        "identity_a INTEGER NOT NULL, identity_b INTEGER NOT NULL, "
+        "confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)), "
+        "created_by TEXT NOT NULL CHECK (created_by IN ('user', 'system', 'llm', 'legacy')), "
+        "discovery_method TEXT NOT NULL CHECK (discovery_method IN "
+        "('manual', 'cooccurrence', 'metadata', 'lexical', 'semantic', 'visual', 'llm', 'legacy')), "
+        "reviewed_status TEXT NOT NULL DEFAULT 'unreviewed' CHECK "
+        "(reviewed_status IN ('unreviewed', 'confirmed', 'rejected', 'unsupported')), "
+        "explanation TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "FOREIGN KEY(from_object_id) REFERENCES objects(object_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(to_object_id) REFERENCES objects(object_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(identity_a) REFERENCES objects(object_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(identity_b) REFERENCES objects(object_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(relationship_type, is_symmetric) REFERENCES relationship_types(name, is_symmetric), "
+        "CHECK(from_object_id <> to_object_id), "
+        "CHECK((is_symmetric = 0 AND identity_a = from_object_id AND identity_b = to_object_id) OR "
+        "(is_symmetric = 1 AND ((from_object_id < to_object_id AND identity_a = from_object_id AND identity_b = to_object_id) OR "
+        "(to_object_id < from_object_id AND identity_a = to_object_id AND identity_b = from_object_id)))), "
+        "UNIQUE(identity_a, identity_b, relationship_type)"
+        ")"
+    )
+    connection.execute(
+        "CREATE TABLE relationship_evidence__v2 ("
+        "evidence_id INTEGER PRIMARY KEY AUTOINCREMENT, relationship_id INTEGER NOT NULL, "
+        "source_id INTEGER NOT NULL, unit_id INTEGER, "
+        "discovery_method TEXT NOT NULL CHECK (discovery_method IN "
+        "('manual', 'cooccurrence', 'metadata', 'lexical', 'semantic', 'visual', 'llm', 'legacy')), "
+        "confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)), "
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "FOREIGN KEY(relationship_id) REFERENCES relationships__v2(relationship_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(source_id) REFERENCES sources(source_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(unit_id) REFERENCES document_units(unit_id) ON DELETE CASCADE, "
+        "FOREIGN KEY(unit_id, source_id) REFERENCES document_units(unit_id, source_id) ON DELETE CASCADE"
+        ")"
+    )
+    for row in relationship_rows:
+        connection.execute(
+            "INSERT INTO relationships__v2(relationship_id, from_object_id, to_object_id, relationship_type, "
+            "is_symmetric, identity_a, identity_b, confidence, created_by, discovery_method, reviewed_status, "
+            "explanation, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            tuple(row),
+        )
+    for row in evidence_rows:
+        connection.execute(
+            "INSERT INTO relationship_evidence__v2(evidence_id, relationship_id, source_id, unit_id, "
+            "discovery_method, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            tuple(row),
+        )
+    connection.execute("DROP TABLE relationship_evidence")
+    connection.execute("DROP TABLE relationships")
+    connection.execute("ALTER TABLE relationships__v2 RENAME TO relationships")
+    connection.execute("ALTER TABLE relationship_evidence__v2 RENAME TO relationship_evidence")
+    _create_connection_indexes(connection)
+    violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise MigrationConflict(f"foreign-key check failed with {len(violations)} violation(s)")
+
+
 def _create_migration_tables(connection: sqlite3.Connection) -> None:
     connection.execute(
         "CREATE TABLE objects__new ("
@@ -584,20 +659,20 @@ def _create_migration_tables(connection: sqlite3.Connection) -> None:
 
 def _create_connection_indexes(connection: sqlite3.Connection) -> None:
     statements = (
-        "CREATE UNIQUE INDEX ux_object_evidence_unit ON object_evidence(object_id, source_id, unit_id) WHERE unit_id IS NOT NULL",
-        "CREATE UNIQUE INDEX ux_object_evidence_source ON object_evidence(object_id, source_id) WHERE unit_id IS NULL",
-        "CREATE UNIQUE INDEX ux_relationship_evidence_unit ON relationship_evidence(relationship_id, source_id, unit_id) WHERE unit_id IS NOT NULL",
-        "CREATE UNIQUE INDEX ux_relationship_evidence_source ON relationship_evidence(relationship_id, source_id) WHERE unit_id IS NULL",
-        "CREATE INDEX idx_objects_status_type ON objects(status, object_type)",
-        "CREATE INDEX idx_object_evidence_object_source ON object_evidence(object_id, source_id)",
-        "CREATE INDEX idx_object_evidence_source ON object_evidence(source_id)",
-        "CREATE INDEX idx_object_evidence_unit ON object_evidence(unit_id)",
-        "CREATE INDEX idx_relationships_from ON relationships(from_object_id)",
-        "CREATE INDEX idx_relationships_to ON relationships(to_object_id)",
-        "CREATE INDEX idx_relationships_type_review ON relationships(relationship_type, reviewed_status)",
-        "CREATE INDEX idx_relationship_evidence_relationship ON relationship_evidence(relationship_id)",
-        "CREATE INDEX idx_relationship_evidence_source ON relationship_evidence(source_id)",
-        "CREATE INDEX idx_relationship_evidence_unit ON relationship_evidence(unit_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_object_evidence_unit ON object_evidence(object_id, source_id, unit_id) WHERE unit_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_object_evidence_source ON object_evidence(object_id, source_id) WHERE unit_id IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_relationship_evidence_unit ON relationship_evidence(relationship_id, source_id, unit_id) WHERE unit_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_relationship_evidence_source ON relationship_evidence(relationship_id, source_id) WHERE unit_id IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_objects_status_type ON objects(status, object_type)",
+        "CREATE INDEX IF NOT EXISTS idx_object_evidence_object_source ON object_evidence(object_id, source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_object_evidence_source ON object_evidence(source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_object_evidence_unit ON object_evidence(unit_id)",
+        "CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_object_id)",
+        "CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_object_id)",
+        "CREATE INDEX IF NOT EXISTS idx_relationships_type_review ON relationships(relationship_type, reviewed_status)",
+        "CREATE INDEX IF NOT EXISTS idx_relationship_evidence_relationship ON relationship_evidence(relationship_id)",
+        "CREATE INDEX IF NOT EXISTS idx_relationship_evidence_source ON relationship_evidence(source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_relationship_evidence_unit ON relationship_evidence(unit_id)",
     )
     for statement in statements:
         connection.execute(statement)

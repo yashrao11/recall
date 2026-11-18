@@ -149,7 +149,7 @@ def discover_indexed_sources(
 def reconcile_automatic_knowledge(connection: sqlite3.Connection) -> None:
     """Remove unsupported automatic derivatives while preserving user curation."""
     connection.execute(
-        "DELETE FROM relationships "
+        "UPDATE relationships SET reviewed_status = 'unsupported', updated_at = CURRENT_TIMESTAMP "
         "WHERE created_by IN ('system', 'llm') AND discovery_method <> 'manual' "
         "AND reviewed_status = 'unreviewed' "
         "AND NOT EXISTS (SELECT 1 FROM relationship_evidence e "
