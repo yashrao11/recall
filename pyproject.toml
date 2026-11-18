@@ -21,7 +21,9 @@ ingestion = [
   "python-pptx>=1.0,<2",
   "pillow>=10,<12",
 ]
+ai = ["google-genai>=1.0,<2"]
 retrieval = [
+  "numpy>=2,<3",
   "faiss-cpu>=1.8,<2",
   "sentence-transformers>=3,<6",
 ]

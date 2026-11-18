@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
 from pathlib import Path
+import shutil
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.db.database import get_connection
 from app.ingestion.scanner import sync_mount
+from app.retrieval.vector_store import FaissVectorStore, VectorStoreUnavailable
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -58,10 +61,58 @@ def list_sources(request: Request) -> dict:
     return {"mounts": mounts, "sources": sources}
 
 
+@router.get("/{source_id}/file")
+def source_file(source_id: int, request: Request) -> FileResponse:
+    with get_connection(request.app.state.settings.database_path) as connection:
+        source = _source_with_mount(connection, source_id)
+    path = _mounted_file_path(source)
+    return FileResponse(path, media_type=source["mime_type"] or "application/octet-stream")
+
+
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_source(source_id: int, request: Request) -> None:
+    settings = request.app.state.settings
     with get_connection(request.app.state.settings.database_path) as connection:
-        cursor = connection.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="source not found")
+        source = _source_with_mount(connection, source_id)
+        unit_ids = [
+            int(row["unit_id"])
+            for row in connection.execute("SELECT unit_id FROM document_units WHERE source_id = ?", (source_id,))
+        ]
+        connection.execute("DELETE FROM fts_units WHERE source_id = ?", (source_id,))
+        connection.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+    try:
+        text_store = FaissVectorStore(settings.data_dir / "text.index", settings.embedding_dimension)
+        visual_store = FaissVectorStore(settings.data_dir / "visual.index", settings.embedding_dimension)
+        text_store.remove_many(unit_ids)
+        visual_store.remove_many(unit_ids)
+        text_store.persist()
+        visual_store.persist()
+    except VectorStoreUnavailable:
+        pass
+    thumbnail_dir = settings.derived_dir / "thumbnails" / str(source_id)
+    if thumbnail_dir.exists():
+        shutil.rmtree(thumbnail_dir)
+
+
+def _source_with_mount(connection, source_id: int):
+    source = connection.execute(
+        "SELECT s.*, m.path AS mount_path, m.enabled AS mount_enabled "
+        "FROM sources s JOIN folder_mounts m ON m.mount_id = s.mount_id WHERE s.source_id = ?",
+        (source_id,),
+    ).fetchone()
+    if source is None:
+        raise HTTPException(status_code=404, detail="source not found")
+    return source
+
+
+def _mounted_file_path(source) -> Path:
+    mount_path = Path(source["mount_path"]).resolve()
+    source_path = Path(source["original_path"]).resolve()
+    if not source["mount_enabled"] or not source_path.is_file():
+        raise HTTPException(status_code=404, detail="source file is unavailable")
+    try:
+        source_path.relative_to(mount_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="source is outside its mounted folder") from exc
+    return source_path
 

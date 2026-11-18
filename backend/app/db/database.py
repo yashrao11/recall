@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 import sqlite3
+import json
 from pathlib import Path
 
 
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS document_units (
     page_or_slide INTEGER,
     timestamp_sec REAL,
     extracted_text TEXT NOT NULL DEFAULT '',
+    short_comment TEXT NOT NULL DEFAULT '',
+    tags_json TEXT NOT NULL DEFAULT '[]',
     thumbnail_path TEXT,
     text_embedding_ref TEXT,
     visual_embedding_ref TEXT
@@ -49,8 +52,21 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_units USING fts5(
     unit_id UNINDEXED,
     source_id UNINDEXED,
     extracted_text,
+    short_comment,
+    tags,
     tokenize='porter ascii'
 );
+
+CREATE TABLE IF NOT EXISTS api_cache (
+    cache_key TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_cache_content ON api_cache(content_hash);
 
 CREATE TABLE IF NOT EXISTS memory_events (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +143,51 @@ def connect(database_path: Path) -> sqlite3.Connection:
 def initialize_database(database_path: Path) -> None:
     with connect(database_path) as connection:
         connection.executescript(SCHEMA)
+        _migrate_legacy_schema(connection)
+
+
+def _migrate_legacy_schema(connection: sqlite3.Connection) -> None:
+    """Upgrade the initial foundation schema without touching source originals."""
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(document_units)")}
+    if "short_comment" not in columns:
+        connection.execute("ALTER TABLE document_units ADD COLUMN short_comment TEXT NOT NULL DEFAULT ''")
+    if "tags_json" not in columns:
+        connection.execute("ALTER TABLE document_units ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'")
+
+    fts_columns = {row["name"] for row in connection.execute("PRAGMA table_info(fts_units)")}
+    if "short_comment" not in fts_columns or "tags" not in fts_columns:
+        connection.execute("DROP TABLE IF EXISTS fts_units")
+        connection.execute(
+            "CREATE VIRTUAL TABLE fts_units USING fts5(" 
+            "unit_id UNINDEXED, source_id UNINDEXED, extracted_text, short_comment, tags, "
+            "tokenize='porter ascii')"
+        )
+
+
+def cache_key(provider: str, operation: str, content_hash: str) -> str:
+    return f"{provider}:{operation}:{content_hash}"
+
+
+def get_cached_response(connection: sqlite3.Connection, key: str) -> object | None:
+    row = connection.execute(
+        "SELECT response_json FROM api_cache WHERE cache_key = ?", (key,)
+    ).fetchone()
+    return None if row is None else json.loads(row["response_json"])
+
+
+def put_cached_response(
+    connection: sqlite3.Connection,
+    key: str,
+    content_hash: str,
+    provider: str,
+    operation: str,
+    response: object,
+) -> None:
+    connection.execute(
+        "INSERT OR REPLACE INTO api_cache "
+        "(cache_key, content_hash, provider, operation, response_json) VALUES (?, ?, ?, ?, ?)",
+        (key, content_hash, provider, operation, json.dumps(response)),
+    )
 
 
 @contextmanager

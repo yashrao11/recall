@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Request
 
 from app.db.database import get_connection
+from app.ai.providers import ProviderUnavailable, build_embedding_provider, build_metadata_provider
+from app.ingestion.indexer import run_pending
 
 router = APIRouter(prefix="/index", tags=["indexing"])
 
@@ -39,4 +41,18 @@ def pause_indexing(request: Request) -> dict:
 def resume_indexing(request: Request) -> dict:
     request.app.state.indexing_paused = False
     return {"paused": False}
+
+
+@router.post("/run")
+def run_indexing(request: Request) -> dict:
+    if request.app.state.indexing_paused:
+        return {"queued": 0, "completed": 0, "errors": 0, "paused": True}
+    settings = request.app.state.settings
+    embedding_provider = None
+    try:
+        embedding_provider = build_embedding_provider(settings)
+    except (ProviderUnavailable, ValueError):
+        # Text/metadata ingestion remains usable offline; semantic vectors are optional.
+        embedding_provider = None
+    return run_pending(settings, embedding_provider, build_metadata_provider(settings))
 
