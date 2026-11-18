@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import importlib.util
 import json
 import re
 from typing import Protocol
@@ -14,6 +15,14 @@ from app.db.database import cache_key, get_cached_response, put_cached_response
 
 class ProviderUnavailable(RuntimeError):
     """Raised when an optional local or cloud model is not configured."""
+
+
+class CloudAIDisabled(ProviderUnavailable):
+    """Raised whenever a cloud provider is requested while cloud AI is disabled."""
+
+
+class ProviderConfigurationError(ProviderUnavailable):
+    """Raised when a permitted provider is missing required configuration."""
 
 
 class EmbeddingProvider(Protocol):
@@ -39,12 +48,16 @@ class UnitMetadataProvider(Protocol):
 @dataclass
 class GeminiProvider:
     api_key: str
+    allow_cloud_ai: bool = False
     model: str = "gemini-embedding-2"
     metadata_model: str = "gemini-2.5-flash"
     dimension: int = 768
     name: str = "gemini"
 
     def __post_init__(self) -> None:
+        self._ensure_cloud_allowed()
+        if not self.api_key.strip():
+            raise ProviderConfigurationError("GEMINI_API_KEY is required when cloud AI is enabled")
         try:
             from google import genai
         except ImportError as exc:
@@ -52,12 +65,20 @@ class GeminiProvider:
         self._genai = genai
         self._client = genai.Client(api_key=self.api_key)
 
+    def _ensure_cloud_allowed(self) -> None:
+        if not self.allow_cloud_ai:
+            raise CloudAIDisabled(
+                "Cloud AI is disabled (ALLOW_CLOUD_AI=false); Gemini will not be initialised or called"
+            )
+
     def embed_text(self, text: str, content_hash: str, connection: sqlite3.Connection) -> list[float]:
+        self._ensure_cloud_allowed()
         return self._embed(text, content_hash, connection)
 
     def embed_image(
         self, image_bytes: bytes, mime_type: str, content_hash: str, connection: sqlite3.Connection
     ) -> list[float]:
+        self._ensure_cloud_allowed()
         key = cache_key(self.name, "embed_image", content_hash)
         cached = get_cached_response(connection, key)
         if cached is not None:
@@ -77,6 +98,7 @@ class GeminiProvider:
         self, text: str, image_bytes: bytes | None, mime_type: str | None, content_hash: str,
         connection: sqlite3.Connection,
     ) -> tuple[str, list[str]]:
+        self._ensure_cloud_allowed()
         key = cache_key(self.name, "describe_unit", content_hash)
         cached = get_cached_response(connection, key)
         if cached is not None:
@@ -173,10 +195,17 @@ class LocalMetadataProvider:
 
 def build_embedding_provider(settings: Settings) -> EmbeddingProvider:
     if settings.embedding_provider.lower() == "gemini":
+        if not settings.allow_cloud_ai:
+            raise CloudAIDisabled(
+                "Cloud AI is disabled (ALLOW_CLOUD_AI=false); embedding provider is unavailable"
+            )
         if not settings.gemini_api_key:
-            raise ProviderUnavailable("GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini")
+            raise ProviderConfigurationError(
+                "GEMINI_API_KEY is required when ALLOW_CLOUD_AI=true and EMBEDDING_PROVIDER=gemini"
+            )
         return GeminiProvider(
             api_key=settings.gemini_api_key,
+            allow_cloud_ai=True,
             model=settings.gemini_embedding_model,
             metadata_model=settings.gemini_metadata_model,
             dimension=settings.embedding_dimension,
@@ -187,14 +216,70 @@ def build_embedding_provider(settings: Settings) -> EmbeddingProvider:
 
 
 def build_metadata_provider(settings: Settings) -> UnitMetadataProvider:
-    if settings.gemini_api_key:
+    if not settings.allow_cloud_ai:
+        return LocalMetadataProvider()
+    if not settings.gemini_api_key:
+        raise ProviderConfigurationError(
+            "GEMINI_API_KEY is required when ALLOW_CLOUD_AI=true for Gemini metadata generation"
+        )
+    if settings.allow_cloud_ai and settings.gemini_api_key:
         return GeminiProvider(
             api_key=settings.gemini_api_key,
+            allow_cloud_ai=True,
             model=settings.gemini_embedding_model,
             metadata_model=settings.gemini_metadata_model,
             dimension=settings.embedding_dimension,
         )
     return LocalMetadataProvider()
+
+
+def provider_status(settings: Settings) -> dict[str, object]:
+    """Return configuration facts only; never instantiate a provider or expose secrets."""
+    configured_embedding = settings.embedding_provider.lower()
+    has_gemini_package = importlib.util.find_spec("google.genai") is not None
+    has_bge_package = importlib.util.find_spec("sentence_transformers") is not None
+
+    if configured_embedding == "gemini":
+        if not settings.allow_cloud_ai:
+            active_embedding = "disabled (cloud AI disabled)"
+            embedding_operational = False
+        elif not settings.gemini_api_key:
+            active_embedding = "gemini (missing credentials)"
+            embedding_operational = False
+        elif not has_gemini_package:
+            active_embedding = "gemini (google-genai unavailable)"
+            embedding_operational = False
+        else:
+            active_embedding = "gemini"
+            embedding_operational = True
+    elif configured_embedding == "bge":
+        active_embedding = "bge" if has_bge_package else "bge (sentence-transformers unavailable)"
+        embedding_operational = has_bge_package
+    else:
+        active_embedding = f"unsupported ({settings.embedding_provider})"
+        embedding_operational = False
+
+    if settings.allow_cloud_ai and settings.gemini_api_key and has_gemini_package:
+        active_metadata = "gemini"
+    else:
+        active_metadata = "local-heuristic"
+
+    return {
+        "cloud_ai_permitted": settings.allow_cloud_ai,
+        "active_embedding_provider": active_embedding,
+        "active_metadata_provider": active_metadata,
+        "local_fallback_availability": {
+            "keyword_search": True,
+            "metadata_heuristic": True,
+            "bge": has_bge_package,
+        },
+        "embedding_operational": embedding_operational,
+        "message": (
+            "Cloud AI is disabled; only local keyword search and local metadata fallback are active"
+            if not settings.allow_cloud_ai
+            else "Cloud AI is permitted; provider status reflects installed dependencies and credentials"
+        ),
+    }
 
 
 def _extract_embedding(result: object) -> list[float]:

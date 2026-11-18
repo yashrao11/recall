@@ -1,7 +1,14 @@
 from fastapi import APIRouter, Request
 
 from app.db.database import get_connection
-from app.ai.providers import LocalMetadataProvider, ProviderUnavailable, build_embedding_provider, build_metadata_provider
+from app.ai.providers import (
+    CloudAIDisabled,
+    LocalMetadataProvider,
+    ProviderUnavailable,
+    build_embedding_provider,
+    build_metadata_provider,
+    provider_status,
+)
 from app.ingestion.indexer import run_pending
 
 router = APIRouter(prefix="/index", tags=["indexing"])
@@ -49,14 +56,30 @@ def run_indexing(request: Request) -> dict:
         return {"queued": 0, "completed": 0, "errors": 0, "paused": True}
     settings = request.app.state.settings
     embedding_provider = None
+    warnings: list[str] = []
     try:
         embedding_provider = build_embedding_provider(settings)
-    except (ProviderUnavailable, ValueError):
-        # Text/metadata ingestion remains usable offline; semantic vectors are optional.
-        embedding_provider = None
+    except (CloudAIDisabled, ProviderUnavailable, ValueError) as exc:
+        # Text/metadata ingestion remains usable offline; semantic vectors are optional,
+        # but the caller must be told exactly why they are unavailable.
+        warnings.append(str(exc))
     try:
         metadata_provider = build_metadata_provider(settings)
-    except ProviderUnavailable:
+    except ProviderUnavailable as exc:
+        warnings.append(str(exc))
         metadata_provider = LocalMetadataProvider()
-    return run_pending(settings, embedding_provider, metadata_provider)
+    result = run_pending(settings, embedding_provider, metadata_provider)
+    result.update(
+        {
+            "cloud_ai_permitted": settings.allow_cloud_ai,
+            "embedding_operational": embedding_provider is not None,
+            "warnings": warnings,
+        }
+    )
+    return result
+
+
+@router.get("/config")
+def configuration_status(request: Request) -> dict[str, object]:
+    return provider_status(request.app.state.settings)
 

@@ -3,6 +3,18 @@ from functools import lru_cache
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_project_environment(env_path: Path | None = None) -> Path:
+    """Load the project environment without overriding process-level variables."""
+    path = env_path or PROJECT_ROOT / ".env"
+    load_dotenv(dotenv_path=path, override=False)
+    return path
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime configuration loaded from environment variables or `.env`."""
@@ -33,6 +45,7 @@ class Settings:
 
 @lru_cache
 def get_settings() -> Settings:
+    load_project_environment()
     raw_origins = os.getenv("CORS_ORIGINS")
     origins = (
         [origin.strip() for origin in raw_origins.split(",") if origin.strip()]

@@ -28,10 +28,11 @@ def search(
     with get_connection(settings.database_path) as connection:
         keyword_results = keyword_search(connection, q, 50, type, from_date, to_date)
         provider = None
+        notice = None
         try:
             provider = build_embedding_provider(settings)
-        except (ProviderUnavailable, ValueError):
-            pass
+        except (ProviderUnavailable, ValueError) as exc:
+            notice = str(exc)
         vector_results = []
         if provider is not None and mode in {"semantic", "visual", "hybrid", "hybrid_rerank"}:
             vector_results = vector_search(connection, settings, provider, q, mode if mode != "semantic" else "semantic")
@@ -47,5 +48,13 @@ def search(
             results = reciprocal_rank_fusion(lists)
             if mode == "hybrid_rerank":
                 results = rerank(q, results, limit)
-        return {"results": results[:limit], "total": len(results), "mode": mode}
+        response = {
+            "results": results[:limit],
+            "total": len(results),
+            "mode": mode,
+            "embedding_operational": provider is not None,
+        }
+        if notice:
+            response["notice"] = notice
+        return response
 
