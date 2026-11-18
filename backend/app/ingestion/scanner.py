@@ -59,7 +59,7 @@ def discover_files(folder: Path) -> list[DiscoveredFile]:
 
 
 def sync_mount(connection: sqlite3.Connection, mount_id: int, folder: Path) -> dict[str, int]:
-    """Register new/changed files and mark removed files as skipped.
+    """Register new/changed files and mark removed files as pending.
 
     Actual extraction is intentionally separate: this function only establishes the
     durable inventory and change-detection contract for the worker.
@@ -96,7 +96,7 @@ def sync_mount(connection: sqlite3.Connection, mount_id: int, folder: Path) -> d
     for path, row in existing.items():
         if path not in discovered and row["content_hash"] is not None:
             connection.execute(
-                "UPDATE sources SET indexing_status = 'skipped', indexing_error = 'file no longer exists' "
+                "UPDATE sources SET indexing_status = 'pending', indexing_error = 'file no longer exists' "
                 "WHERE source_id = ?",
                 (row["source_id"],),
             )

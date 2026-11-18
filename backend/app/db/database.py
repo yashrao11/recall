@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS sources (
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     captured_at TEXT,
     indexing_status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (indexing_status IN ('pending', 'processing', 'done', 'error', 'skipped')),
+        CHECK (indexing_status IN ('pending', 'processing', 'done', 'partial', 'error')),
     indexing_error TEXT,
     excluded INTEGER NOT NULL DEFAULT 0 CHECK (excluded IN (0, 1))
 );
@@ -148,11 +148,36 @@ def initialize_database(database_path: Path) -> None:
 
 def _migrate_legacy_schema(connection: sqlite3.Connection) -> None:
     """Upgrade the initial foundation schema without touching source originals."""
+    source_schema_row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sources'"
+    ).fetchone()
+    source_schema = source_schema_row[0] if source_schema_row else None
+    if source_schema and "'skipped'" in source_schema:
+        # SQLite does not support altering a CHECK constraint. Update only the
+        # legacy sources-table definition, then invalidate SQLite's schema
+        # cache so existing installations can persist ``partial`` statuses.
+        schema_version = connection.execute("PRAGMA schema_version").fetchone()[0]
+        connection.execute("PRAGMA writable_schema = ON")
+        connection.execute(
+            "UPDATE sqlite_master SET sql = ? WHERE type = 'table' AND name = 'sources'",
+            (source_schema.replace("'skipped'", "'partial'"),),
+        )
+        connection.execute("PRAGMA writable_schema = OFF")
+        connection.execute(f"PRAGMA schema_version = {int(schema_version) + 1}")
+
     columns = {row["name"] for row in connection.execute("PRAGMA table_info(document_units)")}
     if "short_comment" not in columns:
         connection.execute("ALTER TABLE document_units ADD COLUMN short_comment TEXT NOT NULL DEFAULT ''")
     if "tags_json" not in columns:
         connection.execute("ALTER TABLE document_units ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'")
+
+    # ``skipped`` was used by the initial scanner implementation. It is now
+    # represented as pending so the status vocabulary remains finite and the
+    # source can be retried if the mounted file returns.
+    connection.execute(
+        "UPDATE sources SET indexing_status = 'pending', indexing_error = 'file no longer exists' "
+        "WHERE indexing_status = 'skipped'"
+    )
 
     fts_columns = {row["name"] for row in connection.execute("PRAGMA table_info(fts_units)")}
     if "short_comment" not in fts_columns or "tags" not in fts_columns:

@@ -32,8 +32,8 @@ def indexing_status(request: Request) -> dict:
         "pending": counts.get("pending", 0),
         "processing": counts.get("processing", 0),
         "done": counts.get("done", 0),
+        "partial": counts.get("partial", 0),
         "errors": counts.get("error", 0),
-        "skipped": counts.get("skipped", 0),
         "paused": request.app.state.indexing_paused,
     }
 
@@ -53,7 +53,7 @@ def resume_indexing(request: Request) -> dict:
 @router.post("/run")
 def run_indexing(request: Request) -> dict:
     if request.app.state.indexing_paused:
-        return {"queued": 0, "completed": 0, "errors": 0, "paused": True}
+        return {"queued": 0, "completed": 0, "partial": 0, "errors": 0, "paused": True}
     settings = request.app.state.settings
     embedding_provider = None
     warnings: list[str] = []
@@ -69,6 +69,7 @@ def run_indexing(request: Request) -> dict:
         warnings.append(str(exc))
         metadata_provider = LocalMetadataProvider()
     result = run_pending(settings, embedding_provider, metadata_provider)
+    warnings.extend(str(item) for item in result.get("warnings", []))
     result.update(
         {
             "cloud_ai_permitted": settings.allow_cloud_ai,

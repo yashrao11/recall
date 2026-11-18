@@ -88,7 +88,8 @@ def test_cloud_disabled_indexing_never_constructs_gemini(monkeypatch, tmp_path: 
         response = client.post("/index/run")
         payload = response.json()
         assert response.status_code == 200
-        assert payload["completed"] == 1
+        assert payload["completed"] == 0
+        assert payload["partial"] == 1
         assert payload["embedding_operational"] is False
         assert payload["cloud_ai_permitted"] is False
         assert any("Cloud AI is disabled" in warning for warning in payload["warnings"])

@@ -5,12 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-from app.ai.providers import (
-    EmbeddingProvider,
-    LocalMetadataProvider,
-    ProviderUnavailable,
-    UnitMetadataProvider,
-)
+from app.ai.providers import EmbeddingProvider, LocalMetadataProvider, ProviderUnavailable, UnitMetadataProvider
 from app.config import Settings
 from app.db.database import get_connection
 from app.ingestion.chunker import chunk_text
@@ -23,31 +18,30 @@ def index_source(
     settings: Settings,
     embedding_provider: EmbeddingProvider | None = None,
     metadata_provider: UnitMetadataProvider | None = None,
-) -> dict[str, int | str]:
-    """Extract one source, write units/FTS/vector data, and mark it complete."""
+) -> dict[str, object]:
+    """Index one source and persist a truthful terminal status."""
     with get_connection(settings.database_path) as connection:
         source = connection.execute("SELECT * FROM sources WHERE source_id = ?", (source_id,)).fetchone()
-        if source is None:
-            raise ValueError(f"source {source_id} does not exist")
-        connection.execute(
-            "UPDATE sources SET indexing_status = 'processing', indexing_error = NULL WHERE source_id = ?",
-            (source_id,),
-        )
-        try:
+    if source is None:
+        raise ValueError(f"source {source_id} does not exist")
+
+    _set_source_status(settings, source_id, "processing", None)
+    try:
+        # Commit cleanup separately so a failed re-index cannot leave stale units.
+        _clear_source_derived_data(settings, source_id)
+        with get_connection(settings.database_path) as connection:
+            source = connection.execute("SELECT * FROM sources WHERE source_id = ?", (source_id,)).fetchone()
+            if source is None:
+                raise ValueError(f"source {source_id} does not exist")
             result = _index_source_in_transaction(
                 connection, source, settings, embedding_provider, metadata_provider
             )
-            connection.execute(
-                "UPDATE sources SET indexing_status = 'done', indexing_error = ? WHERE source_id = ?",
-                (result.get("warning"), source_id),
-            )
-            return result
-        except Exception as exc:
-            connection.execute(
-                "UPDATE sources SET indexing_status = 'error', indexing_error = ? WHERE source_id = ?",
-                (str(exc), source_id),
-            )
-            raise
+        _set_source_status(settings, source_id, str(result["status"]), _result_detail(result))
+        return result
+    except Exception as exc:
+        # A fresh transaction makes the error status durable after rollback.
+        _set_source_status(settings, source_id, "error", json.dumps({"errors": [str(exc)]}))
+        raise
 
 
 def _index_source_in_transaction(
@@ -56,46 +50,54 @@ def _index_source_in_transaction(
     settings: Settings,
     embedding_provider: EmbeddingProvider | None,
     metadata_provider: UnitMetadataProvider | None,
-) -> dict[str, int | str]:
+) -> dict[str, object]:
     source_id = int(source["source_id"])
-    old_units = connection.execute(
-        "SELECT unit_id FROM document_units WHERE source_id = ?", (source_id,)
-    ).fetchall()
-    old_ids = [int(row["unit_id"]) for row in old_units]
-    _remove_source_derived_rows(connection, source_id)
+    warnings: list[str] = []
+    errors: list[str] = []
+    metadata_fallbacks = 0
+    text_embeddings_created = 0
+    visual_embeddings_created = 0
+    unit_count = 0
 
-    text_store = visual_store = None
-    warning = ""
-    try:
-        if embedding_provider is not None:
-            text_store = FaissVectorStore(settings.data_dir / "text.index", embedding_provider.dimension)
-            visual_store = FaissVectorStore(settings.data_dir / "visual.index", embedding_provider.dimension)
-            text_store.remove_many(old_ids)
-            visual_store.remove_many(old_ids)
-    except VectorStoreUnavailable as exc:
-        warning = str(exc)
+    if embedding_provider is None:
+        warnings.append(
+            "Embeddings unavailable: cloud AI is disabled"
+            if not settings.allow_cloud_ai
+            else "Embeddings unavailable: no operational embedding provider is configured"
+        )
 
     metadata_provider = metadata_provider or LocalMetadataProvider()
-    source_path = Path(source["original_path"])
-    extracted_units = extract_file(source_path, source["source_type"])
-    unit_count = 0
-    embedding_count = 0
-    metadata_fallbacks = 0
+    extracted_units = extract_file(Path(source["original_path"]), source["source_type"])
+
+    text_store = visual_store = None
+    if embedding_provider is not None:
+        try:
+            text_store = FaissVectorStore(settings.data_dir / "text.index", embedding_provider.dimension)
+            visual_store = FaissVectorStore(settings.data_dir / "visual.index", embedding_provider.dimension)
+        except VectorStoreUnavailable as exc:
+            errors.append(f"Embedding storage unavailable: {exc}")
+            text_store = visual_store = None
 
     for extracted in extracted_units:
-        chunks = chunk_text(extracted.text)
-        for chunk in chunks:
+        for chunk in chunk_text(extracted.text):
             unit_hash = _unit_hash(source["content_hash"], extracted, chunk.ordinal, chunk.text)
+            used_local_metadata = getattr(metadata_provider, "name", "") == "local-heuristic"
             try:
                 comment, tags = metadata_provider.describe(
-                    chunk.text, extracted.image_bytes if chunk.ordinal == 0 else None,
-                    extracted.image_mime_type, unit_hash, connection
+                    chunk.text,
+                    extracted.image_bytes if chunk.ordinal == 0 else None,
+                    extracted.image_mime_type,
+                    unit_hash,
+                    connection,
                 )
-            except (ProviderUnavailable, RuntimeError, ValueError):
+            except (ProviderUnavailable, RuntimeError, ValueError) as exc:
+                warnings.append(f"Metadata fallback for unit {unit_hash[:8]}: {exc}")
                 comment, tags = LocalMetadataProvider().describe(
                     chunk.text, extracted.image_bytes if chunk.ordinal == 0 else None,
                     extracted.image_mime_type, unit_hash, connection
                 )
+                used_local_metadata = True
+            if used_local_metadata:
                 metadata_fallbacks += 1
 
             cursor = connection.execute(
@@ -111,48 +113,73 @@ def _index_source_in_transaction(
                 (thumbnail_path, unit_id),
             )
             connection.execute(
-                "INSERT INTO fts_units(unit_id, source_id, extracted_text, short_comment, tags) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO fts_units(unit_id, source_id, extracted_text, short_comment, tags) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (unit_id, source_id, chunk.text, comment, " ".join(tags)),
             )
             unit_count += 1
 
-            if embedding_provider is not None and text_store is not None:
+            if embedding_provider is None or text_store is None:
+                continue
+            try:
+                text_vector = embedding_provider.embed_text(chunk.text or comment, unit_hash, connection)
+                text_store.add(unit_id, text_vector)
+                connection.execute(
+                    "UPDATE document_units SET text_embedding_ref = ? WHERE unit_id = ?",
+                    (f"{embedding_provider.name}:{unit_id}", unit_id),
+                )
+                text_embeddings_created += 1
+            except (ProviderUnavailable, RuntimeError, ValueError, VectorStoreUnavailable) as exc:
+                errors.append(f"Text embedding failed for unit {unit_id}: {exc}")
+
+            if extracted.image_bytes is not None and chunk.ordinal == 0 and visual_store is not None:
                 try:
-                    text_vector = embedding_provider.embed_text(chunk.text or comment, unit_hash, connection)
-                    text_store.add(unit_id, text_vector)
+                    visual_vector = embedding_provider.embed_image(
+                        extracted.image_bytes,
+                        extracted.image_mime_type or "application/octet-stream",
+                        _hash_bytes(extracted.image_bytes),
+                        connection,
+                    )
+                    visual_store.add(unit_id, visual_vector)
                     connection.execute(
-                        "UPDATE document_units SET text_embedding_ref = ? WHERE unit_id = ?",
+                        "UPDATE document_units SET visual_embedding_ref = ? WHERE unit_id = ?",
                         (f"{embedding_provider.name}:{unit_id}", unit_id),
                     )
-                    if extracted.image_bytes is not None and chunk.ordinal == 0:
-                        visual_hash = _hash_bytes(extracted.image_bytes)
-                        visual_vector = embedding_provider.embed_image(
-                            extracted.image_bytes, extracted.image_mime_type or "application/octet-stream",
-                            visual_hash, connection
-                        )
-                        visual_store.add(unit_id, visual_vector)
-                        connection.execute(
-                            "UPDATE document_units SET visual_embedding_ref = ? WHERE unit_id = ?",
-                            (f"{embedding_provider.name}:{unit_id}", unit_id),
-                        )
-                    embedding_count += 1
-                except (ProviderUnavailable, VectorStoreUnavailable) as exc:
-                    warning = str(exc)
+                    visual_embeddings_created += 1
+                except (ProviderUnavailable, RuntimeError, ValueError, VectorStoreUnavailable) as exc:
+                    errors.append(f"Visual embedding failed for unit {unit_id}: {exc}")
 
-    if text_store is not None:
-        text_store.persist()
-    if visual_store is not None:
-        visual_store.persist()
+    for store, label in ((text_store, "text"), (visual_store, "visual")):
+        if store is not None:
+            try:
+                store.persist()
+            except (VectorStoreUnavailable, RuntimeError, ValueError) as exc:
+                errors.append(f"{label} embedding persistence failed: {exc}")
+
     if metadata_fallbacks:
-        warning = f"{metadata_fallbacks} unit metadata calls used the local fallback"
-    return {"units": unit_count, "embeddings": embedding_count, "warning": warning}
+        warnings.append(f"{metadata_fallbacks} unit metadata calls used the local fallback")
+    status = "partial" if warnings or errors else "done"
+    result: dict[str, object] = {
+        "units_created": unit_count,
+        "text_embeddings_created": text_embeddings_created,
+        "visual_embeddings_created": visual_embeddings_created,
+        "metadata_fallbacks": metadata_fallbacks,
+        "warnings": warnings,
+        "errors": errors,
+        "status": status,
+        # Compatibility aliases for existing callers.
+        "units": unit_count,
+        "embeddings": text_embeddings_created + visual_embeddings_created,
+        "warning": warnings[0] if warnings else "",
+    }
+    return result
 
 
 def run_pending(
     settings: Settings,
     embedding_provider: EmbeddingProvider | None = None,
     metadata_provider: UnitMetadataProvider | None = None,
-) -> dict[str, int]:
+) -> dict[str, object]:
     with get_connection(settings.database_path) as connection:
         source_ids = [
             int(row["source_id"])
@@ -160,14 +187,70 @@ def run_pending(
                 "SELECT source_id FROM sources WHERE indexing_status = 'pending' ORDER BY source_id"
             )
         ]
-    completed = errors = 0
+    completed = partial = errors_count = 0
+    results: list[dict[str, object]] = []
+    warnings: list[str] = []
+    errors: list[str] = []
     for source_id in source_ids:
         try:
-            index_source(source_id, settings, embedding_provider, metadata_provider)
-            completed += 1
-        except Exception:
-            errors += 1
-    return {"queued": len(source_ids), "completed": completed, "errors": errors}
+            result = index_source(source_id, settings, embedding_provider, metadata_provider)
+            results.append(result)
+            if result["status"] == "partial":
+                partial += 1
+            else:
+                completed += 1
+            warnings.extend(str(item) for item in result["warnings"])
+            errors.extend(str(item) for item in result["errors"])
+        except Exception as exc:
+            errors_count += 1
+            errors.append(f"Source {source_id}: {exc}")
+    return {
+        "queued": len(source_ids),
+        "completed": completed,
+        "partial": partial,
+        "errors": errors_count,
+        "results": results,
+        "warnings": warnings,
+        "error_details": errors,
+    }
+
+
+def _set_source_status(settings: Settings, source_id: int, status: str, detail: str | None) -> None:
+    with get_connection(settings.database_path) as connection:
+        connection.execute(
+            "UPDATE sources SET indexing_status = ?, indexing_error = ? WHERE source_id = ?",
+            (status, detail, source_id),
+        )
+
+
+def _clear_source_derived_data(settings: Settings, source_id: int) -> None:
+    with get_connection(settings.database_path) as connection:
+        old_units = connection.execute(
+            "SELECT unit_id FROM document_units WHERE source_id = ?", (source_id,)
+        ).fetchall()
+        old_ids = [int(row["unit_id"]) for row in old_units]
+        _remove_source_derived_rows(connection, source_id)
+    if not old_ids:
+        return
+    # Keep vector stores consistent with the committed SQL cleanup. NumPy is
+    # the supported fallback, so an unavailable optional vector backend does
+    # not make ordinary FTS indexing fail.
+    try:
+        stores = (
+            FaissVectorStore(settings.data_dir / "text.index", settings.embedding_dimension),
+            FaissVectorStore(settings.data_dir / "visual.index", settings.embedding_dimension),
+        )
+        for store in stores:
+            store.remove_many(old_ids)
+            store.persist()
+    except (VectorStoreUnavailable, RuntimeError, ValueError):
+        pass
+
+
+def _result_detail(result: dict[str, object]) -> str | None:
+    if not result["warnings"] and not result["errors"]:
+        return None
+    return json.dumps({"warnings": result["warnings"], "errors": result["errors"]})
 
 
 def _remove_source_derived_rows(connection: sqlite3.Connection, source_id: int) -> None:
@@ -192,4 +275,3 @@ def _unit_hash(source_hash: str, extracted: ExtractedUnit, ordinal: int, text: s
 
 def _hash_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
-
