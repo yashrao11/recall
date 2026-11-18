@@ -31,6 +31,25 @@ export async function fetchCalendar(view, date, timezone) {
   };
 }
 
+export async function fetchConversations(limit = 50, offset = 0) {
+  return request(`/conversations?limit=${limit}&offset=${offset}`);
+}
+
+export async function fetchConversationMessages(conversationId, limit = 100, offset = 0) {
+  return request(`/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`);
+}
+
+export async function askMemory(question, conversationId = null) {
+  return request("/ask", {
+    method: "POST",
+    body: JSON.stringify({ question, ...(conversationId ? { conversation_id: conversationId } : {}) }),
+  });
+}
+
+export async function deleteConversation(conversationId) {
+  return request(`/conversations/${conversationId}`, { method: "DELETE" });
+}
+
 export function addDays(date, amount) {
   const value = new Date(`${date}T12:00:00`);
   value.setDate(value.getDate() + amount);
