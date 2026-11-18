@@ -20,6 +20,7 @@ const relationshipTypes = [
 export default function ConnectionsView({ sources = [] }) {
   const [entities, setEntities] = useState([]);
   const [total, setTotal] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
@@ -36,6 +37,11 @@ export default function ConnectionsView({ sources = [] }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => { setQuery(searchInput.trim()); setPage(0); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     fetchEntities({ query, type, status, limit: 24, offset: page * 24 })
@@ -43,7 +49,8 @@ export default function ConnectionsView({ sources = [] }) {
         if (cancelled) return;
         setEntities(payload.entities || []);
         setTotal(payload.total || 0);
-        if (!selectedId && payload.entities?.[0]) setSelectedId(payload.entities[0].object_id);
+        if (payload.entities?.length && !payload.entities.some((entity) => entity.object_id === selectedId)) setSelectedId(payload.entities[0].object_id);
+        if (!payload.entities?.length) { setSelectedId(null); setDetail(null); }
       })
       .catch((reason) => !cancelled && setError(reason.message))
       .finally(() => !cancelled && setLoading(false));
@@ -105,7 +112,7 @@ export default function ConnectionsView({ sources = [] }) {
       <button className="primary-button" onClick={() => setModalOpen(true)}>＋ Connect entities</button>
     </div>
     <div className="connections-toolbar">
-      <form onSubmit={(event) => { event.preventDefault(); setPage(0); }} className="connection-search"><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="Search entities or aliases" aria-label="Search entities" /></form>
+      <form onSubmit={(event) => { event.preventDefault(); setQuery(searchInput.trim()); setPage(0); }} className="connection-search"><span>⌕</span><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search entities or aliases" aria-label="Search entities" /></form>
       <select value={type} onChange={(event) => { setType(event.target.value); setPage(0); }} aria-label="Filter by entity type"><option value="">All types</option><option value="person">People</option><option value="project">Projects</option><option value="organization">Organizations</option><option value="place">Places</option><option value="event">Events</option><option value="topic">Topics</option><option value="concept">Concepts</option></select>
       <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(0); }} aria-label="Filter by status"><option value="">Active entities</option><option value="needs-review">Needs review</option><option value="inactive">Inactive</option></select>
       <select value={sourceId} onChange={(event) => selectSource(event.target.value)} aria-label="Explore source"><option value="">Explore a source…</option>{sources.map((item) => <option key={item.source_id} value={item.source_id}>{item.title || item.filename || `Source ${item.source_id}`}</option>)}</select>
@@ -131,10 +138,10 @@ function EntityDetail({ detail, includeUnsupported, onToggleUnsupported, onEntit
   return <div className="detail-scroll"><div className="detail-hero"><span className="entity-type">{entity.object_type}</span><h2>{entity.title}</h2><p>{entity.description || "No description available."}</p><div className="detail-badges"><span>{entity.status}</span><span>{entity.created_by}</span>{entity.aliases?.length > 0 && <span>Also known as {entity.aliases.join(", ")}</span>}</div></div><div className="detail-section"><div className="section-heading"><span>Supporting evidence</span><span>{detail.evidence?.length || 0}</span></div>{detail.evidence?.length ? detail.evidence.map((item) => <Evidence key={item.evidence_id} evidence={item} onOpenSource={onOpenSource} />) : <div className="small-empty">No supporting evidence is currently available.</div>}</div><div className="detail-section"><div className="section-heading"><span>Relationships</span><label className="toggle-label"><input type="checkbox" checked={includeUnsupported} onChange={onToggleUnsupported} /> Show reviewed exclusions</label></div>{detail.relationships?.length ? detail.relationships.map((item) => <Relationship key={item.relationship_id} item={item} onEntity={onEntity} onReview={onReview} onDelete={onDelete} onOpenSource={onOpenSource} />) : <div className="small-empty">No supported relationships yet.</div>}</div></div>;
 }
 
-function Relationship({ item, onEntity, onReview, onDelete, onOpenSource }) {
+function Relationship({ item, onEntity, onReview, onDelete, onOpenSource, showBoth = false }) {
   const other = item.direction === "incoming" ? item.from_entity : item.to_entity;
   const direction = item.direction === "symmetric" ? "↔" : item.direction === "incoming" ? "←" : "→";
-  return <article className={`relationship-card ${item.supported === false ? "unsupported" : ""}`}><div className="relationship-line"><span className="relationship-arrow">{direction}</span><button className="link-button" onClick={() => onEntity(other.object_id)}>{other.title}</button><span className="relationship-type">{item.relationship_type}</span></div><p>{item.explanation || "Connected through shared knowledge evidence."}</p><div className="relationship-meta"><span>{item.created_by} · {item.reviewed_status}</span><span>{item.supported === false ? "Unsupported" : "Evidence supported"}</span></div>{item.evidence?.length > 0 && <div className="relationship-evidence">{item.evidence.map((evidence) => <Evidence key={evidence.evidence_id} evidence={evidence} onOpenSource={onOpenSource} compact />)}</div>}<div className="relationship-actions">{item.created_by === "system" || item.created_by === "llm" ? item.reviewed_status === "unreviewed" && <><button onClick={() => onReview(item.relationship_id, "confirmed")}>Confirm</button><button onClick={() => onReview(item.relationship_id, "rejected")}>Reject</button><button onClick={() => onReview(item.relationship_id, "unsupported")}>Mark unsupported</button></> : <button onClick={() => onDelete(item.relationship_id)}>Delete relationship</button>}</div></article>;
+  return <article className={`relationship-card ${item.supported === false ? "unsupported" : ""}`}><div className="relationship-line">{showBoth ? <><button className="link-button" onClick={() => onEntity(item.from_entity.object_id)}>{item.from_entity.title}</button><span className="relationship-arrow">{item.is_symmetric ? "↔" : "→"}</span><button className="link-button" onClick={() => onEntity(item.to_entity.object_id)}>{item.to_entity.title}</button></> : <><span className="relationship-arrow">{direction}</span><button className="link-button" onClick={() => onEntity(other.object_id)}>{other.title}</button></>}<span className="relationship-type">{item.relationship_type}</span></div><p>{item.explanation || "Connected through shared knowledge evidence."}</p><div className="relationship-meta"><span>{item.created_by} · {item.reviewed_status}</span><span>{item.supported === false ? "Unsupported" : "Evidence supported"}</span></div>{item.evidence?.length > 0 && <div className="relationship-evidence">{item.evidence.map((evidence) => <Evidence key={evidence.evidence_id} evidence={evidence} onOpenSource={onOpenSource} compact />)}</div>}<div className="relationship-actions">{item.created_by === "system" || item.created_by === "llm" ? item.reviewed_status === "unreviewed" && <><button onClick={() => onReview(item.relationship_id, "confirmed")}>Confirm</button><button onClick={() => onReview(item.relationship_id, "rejected")}>Reject</button><button onClick={() => onReview(item.relationship_id, "unsupported")}>Mark unsupported</button></> : <button onClick={() => onDelete(item.relationship_id)}>Delete relationship</button>}</div></article>;
 }
 
 function Evidence({ evidence, onOpenSource, compact = false }) {
@@ -142,7 +149,7 @@ function Evidence({ evidence, onOpenSource, compact = false }) {
 }
 
 function SourceConnections({ source, data, onEntity, onOpenSource, onReview, onDelete }) {
-  return <div className="detail-scroll"><div className="detail-hero"><span className="eyebrow">Source connections</span><h2>{source?.title || source?.filename}</h2><p>{source?.filename} · {source?.file_type || "file"}</p><button className="secondary-button" onClick={() => onOpenSource(source)}>Open source</button></div><div className="detail-section"><div className="section-heading"><span>Connected entities</span><span>{data.entities_total || 0}</span></div>{data.entities?.length ? data.entities.map((entity) => <button className="source-entity" key={entity.object_id} onClick={() => onEntity(entity.object_id)}><span className="entity-type">{entity.object_type}</span><strong>{entity.title}</strong><small>{entity.evidence?.length || 0} evidence item(s)</small></button>) : <div className="small-empty">No entities are connected to this source.</div>}</div><div className="detail-section"><div className="section-heading"><span>Relationships in this source</span><span>{data.relationships_total || 0}</span></div>{data.relationships?.length ? data.relationships.map((item) => <Relationship key={item.relationship_id} item={item} onEntity={onEntity} onReview={onReview} onDelete={onDelete} onOpenSource={onOpenSource} />) : <div className="small-empty">No relationships are supported by this source.</div>}</div></div>;
+  return <div className="detail-scroll"><div className="detail-hero"><span className="eyebrow">Source connections</span><h2>{source?.title || source?.filename}</h2><p>{source?.filename} · {source?.file_type || "file"}</p><button className="secondary-button" onClick={() => onOpenSource(source)}>Open source</button></div><div className="detail-section"><div className="section-heading"><span>Connected entities</span><span>{data.entities_total || 0}</span></div>{data.entities?.length ? data.entities.map((entity) => <button className="source-entity" key={entity.object_id} onClick={() => onEntity(entity.object_id)}><span className="entity-type">{entity.object_type}</span><strong>{entity.title}</strong><small>{entity.evidence?.length || 0} evidence item(s)</small></button>) : <div className="small-empty">No entities are connected to this source.</div>}</div><div className="detail-section"><div className="section-heading"><span>Relationships in this source</span><span>{data.relationships_total || 0}</span></div>{data.relationships?.length ? data.relationships.map((item) => <Relationship key={item.relationship_id} item={item} showBoth onEntity={onEntity} onReview={onReview} onDelete={onDelete} onOpenSource={onOpenSource} />) : <div className="small-empty">No relationships are supported by this source.</div>}</div></div>;
 }
 
 function RelationshipModal({ entities, onClose, onCreated, onError }) {

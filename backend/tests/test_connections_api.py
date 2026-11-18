@@ -110,6 +110,7 @@ def test_source_connections_and_entity_detail_return_traceable_evidence(tmp_path
         assert len(source["entities"]) == 2
         assert source["entities"][0]["evidence"][0]["page"] == 7
         assert source["relationships"][0]["relationship_id"] == auto_id
+        assert source["relationships"][0]["supported"] is True
         assert source["relationships"][0]["evidence"][0]["source_id"] == source_one
         assert all("original_path" not in item for item in source["entities"])
 

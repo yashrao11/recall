@@ -390,6 +390,10 @@ def _group_relationship_rows(rows: list[sqlite3.Row]) -> list[dict]:
             "confidence": row["evidence_confidence"],
             "supported": True,
         })
+    for relationship in grouped.values():
+        relationship["supported"] = relationship["reviewed_status"] in _VISIBLE_STATUSES and (
+            relationship["created_by"] == "user" or bool(relationship["evidence"])
+        )
     return list(grouped.values())
 
 
