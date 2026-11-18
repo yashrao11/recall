@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 
 from app.db.database import get_connection
-from app.ai.providers import ProviderUnavailable, build_embedding_provider, build_metadata_provider
+from app.ai.providers import LocalMetadataProvider, ProviderUnavailable, build_embedding_provider, build_metadata_provider
 from app.ingestion.indexer import run_pending
 
 router = APIRouter(prefix="/index", tags=["indexing"])
@@ -54,5 +54,9 @@ def run_indexing(request: Request) -> dict:
     except (ProviderUnavailable, ValueError):
         # Text/metadata ingestion remains usable offline; semantic vectors are optional.
         embedding_provider = None
-    return run_pending(settings, embedding_provider, build_metadata_provider(settings))
+    try:
+        metadata_provider = build_metadata_provider(settings)
+    except ProviderUnavailable:
+        metadata_provider = LocalMetadataProvider()
+    return run_pending(settings, embedding_provider, metadata_provider)
 

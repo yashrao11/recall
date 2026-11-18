@@ -1,8 +1,8 @@
 # Recall — Complete Build Roadmap
 
-> **Status:** Phase 1 is in progress. The backend foundation, SQLite schema, folder mounting,
-> source inventory, hashing, and incremental scanner are implemented; extraction, workers, retrieval,
-> frontend, AI features, and evaluation remain.
+> **Status:** Phases 1 and 2 are implemented for the current milestone. The backend supports
+> extraction, unit metadata, FTS search, provider-backed vector search, hybrid ranking, protected
+> file/thumbnail access, and a functional search UI. Phase 3 has not started.
 > **Goal:** A working, demo-able final-year Deep Learning project.
 
 ---
@@ -788,38 +788,38 @@ flowchart TD
 ## Task Checklist
 
 ### Phase 1 — Foundation
-- [ ] Create project directory structure (backend + frontend)
-- [ ] Set up Python venv + install all dependencies
-- [ ] Create Vite React TypeScript project
+- [x] Create project directory structure (backend + frontend)
+- [x] Set up Python venv + install core dependencies
+- [x] Create Vite React TypeScript project
 - [x] Write `config.py` with `.env` loading
 - [x] Write database schema (`schema.py`) with all tables
 - [x] Write database initialization on startup
 - [x] Write `main.py` with FastAPI + CORS + router mounts
 - [x] Write scanner — walk folder, hash files, detect changes
-- [ ] Write `extractor.py` — PDF (PyMuPDF), PPTX, DOCX, Image, TXT
+- [x] Write `extractor.py` — PDF (PyMuPDF), PPTX, DOCX, Image, TXT
 - [ ] Write `ocr.py` — PaddleOCR integration
-- [ ] Write `chunker.py` — text splitting with page reference
-- [ ] Write `embedder.py` — BGE model + FAISS text index
+- [x] Write `chunker.py` — text splitting with page reference
+- [x] Write provider-backed embedding/vector indexing with FAISS-compatible deletion
 - [ ] Write `indexing_worker.py` — background async worker
-- [ ] Write `api/sources.py` — folder mount/remove/list endpoints
-- [ ] Write `api/status.py` — indexing progress endpoint
+- [x] Write `api/sources.py` — folder mount/remove/list endpoints
+- [x] Write `api/status.py` — indexing progress endpoint
 - [ ] Write `api/capture.py` — note/upload endpoint
-- [ ] Write `api/units.py` — unit retrieval endpoint
-- [ ] **Test:** add folder via API → watch indexing → verify chunks in SQLite + FAISS
+- [x] Write `api/units.py` — unit retrieval and thumbnail endpoints
+- [x] **Test:** add folder via API → index → verify units, FTS, vectors, and file access
 
 ### Phase 2 — Search Core
-- [ ] Write `retrieval/fts_search.py` — FTS5 BM25 keyword search
-- [ ] Write `retrieval/semantic_search.py` — FAISS semantic search
+- [x] Write `retrieval/fts_search.py` — FTS5 BM25 keyword search
+- [x] Write `retrieval/semantic_search.py` — provider-backed vector search
 - [ ] Write `retrieval/visual_search.py` — ColQwen2 visual embedder
-- [ ] Add page image embedding to visual FAISS index during ingestion
-- [ ] Write `retrieval/fusion.py` — Reciprocal Rank Fusion
-- [ ] Write `retrieval/reranker.py` — cross-encoder reranking
-- [ ] Expose `GET /search` with modes: `keyword`, `semantic`, `visual`, `hybrid`, `hybrid_rerank`
-- [ ] Build `SearchView.tsx` — search bar, results grid, filters
-- [ ] Build `ThumbnailCard.tsx` — card with image, snippet, page, match reason
+- [x] Add page image embedding to visual vector index during ingestion
+- [x] Write `retrieval/fusion.py` — Reciprocal Rank Fusion
+- [x] Write `retrieval/reranker.py` — deterministic CPU reranking baseline
+- [x] Expose `GET /search` with modes: `keyword`, `semantic`, `visual`, `hybrid`, `hybrid_rerank`
+- [x] Build functional search UI — search bar, results, modes, thumbnails, file links
+- [x] Build result cards with image, snippet, page, and match reason
 - [ ] Build `MemoryViewer.tsx` — document view with page navigation
-- [ ] Connect frontend search to backend `GET /search`
-- [ ] **Test:** verify hybrid outperforms individual modes on test queries
+- [x] Connect frontend search to backend `GET /search`
+- [ ] **Test:** verify hybrid outperforms individual modes on labelled retrieval queries
 
 ### Phase 3 — AI Features
 - [ ] Write `ai/provider.py` — Anthropic/OpenAI/Ollama unified interface
