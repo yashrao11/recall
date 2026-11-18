@@ -17,7 +17,14 @@ class GenerationProvider:
     name: str
     model: str
 
-    def generate(self, prompt: str, content_hash: str, connection: sqlite3.Connection) -> str:
+    def generate(
+        self,
+        prompt: str,
+        content_hash: str,
+        connection: sqlite3.Connection,
+        *,
+        system_instruction: str | None = None,
+    ) -> str:
         raise NotImplementedError
 
 
@@ -48,18 +55,34 @@ class GeminiGenerationProvider(GenerationProvider):
                 "Cloud AI is disabled (ALLOW_CLOUD_AI=false); Gemini generation is unavailable"
             )
 
-    def generate(self, prompt: str, content_hash: str, connection: sqlite3.Connection) -> str:
+    def generate(
+        self,
+        prompt: str,
+        content_hash: str,
+        connection: sqlite3.Connection,
+        *,
+        system_instruction: str | None = None,
+    ) -> str:
         self._ensure_cloud_allowed()
         key = cache_key(self.name, "generate", content_hash)
         cached = get_cached_response(connection, key)
         if cached is not None:
             return str(cached)
+        request = {
+            "model": self.model,
+            "store": False,
+            "input": prompt,
+        }
+        if system_instruction:
+            request["system_instruction"] = system_instruction
+        # Safe diagnostics for smoke tests and operational status; never retain prompt or secrets.
+        self.last_request_metadata = {
+            "model": self.model,
+            "store": False,
+            "has_system_instruction": bool(system_instruction),
+        }
         try:
-            interaction = self._client.interactions.create(
-                model=self.model,
-                store=False,
-                input=prompt,
-            )
+            interaction = self._client.interactions.create(**request)
             output = _extract_output_text(interaction)
         except Exception as exc:  # noqa: BLE001 - provider boundary must normalize SDK errors
             raise GenerationProviderError(f"Gemini generation failed: {type(exc).__name__}") from exc

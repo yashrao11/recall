@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import re
@@ -60,7 +61,8 @@ def ask_question(
             )
 
         context, citations = _build_context(evidence, max_context_chars)
-        prompt = _grounded_prompt(question, history, context, len(citations))
+        prompt = _grounded_prompt(question, history, context)
+        system_instruction = _grounded_system_instruction(len(citations))
         if generation_provider is None:
             try:
                 generation_provider = build_generation_provider(settings)
@@ -74,7 +76,13 @@ def ask_question(
                 )
         content_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         try:
-            raw = generation_provider.generate(prompt, content_hash, connection)
+            raw = _invoke_generation(
+                generation_provider,
+                prompt,
+                content_hash,
+                connection,
+                system_instruction,
+            )
         except Exception as exc:  # noqa: BLE001 - provider boundary keeps secrets/content out of errors
             message = f"Generation provider failed: {type(exc).__name__}"
             assistant_message_id = append_message(connection, conversation_id, "assistant", message)
@@ -161,20 +169,9 @@ def _build_context(evidence: list[dict], max_chars: int) -> tuple[str, list[dict
     return "\n".join(chunks), citations
 
 
-def _grounded_prompt(question: str, history: list[dict], context: str, citation_count: int) -> str:
+def _grounded_prompt(question: str, history: list[dict], context: str) -> str:
     history_text = "\n".join(f"{item['role'].title()}: {item['content']}" for item in history[-12:])
-    return f"""You are Recall's grounded memory assistant.
-
-Rules:
-- Answer only from the supplied evidence and conversation context.
-- Cite every factual claim using one or more supplied reference numbers like [1].
-- Never invent file contents, page numbers, titles, or citations.
-- Distinguish direct evidence from a reasonable inference.
-- If the evidence is insufficient, say so clearly.
-- Return JSON only with exactly these keys: answer (string), citations (array of integer reference numbers).
-- Citation numbers must be between 1 and {citation_count}.
-
-Conversation context:
+    return f"""Conversation context:
 {history_text or '(none)'}
 
 Retrieved evidence:
@@ -183,6 +180,34 @@ Retrieved evidence:
 Question:
 {question}
 """
+
+
+def _grounded_system_instruction(citation_count: int) -> str:
+    return f"""You are Recall's grounded memory assistant.
+
+Answer only from the supplied retrieved evidence and local conversation context. Cite every factual claim using one or more supplied reference numbers like [1]. Never invent file contents, page numbers, titles, or citations. Distinguish direct evidence from reasonable inference. If the evidence is insufficient, say so clearly. Never claim that a source supports information absent from its excerpt.
+
+Return JSON only with exactly these keys: answer (string), citations (array of integer reference numbers). Citation numbers must be between 1 and {citation_count}. Use an empty citations array only when no factual answer is supported.
+"""
+
+
+def _invoke_generation(
+    provider: GenerationProvider,
+    prompt: str,
+    content_hash: str,
+    connection: sqlite3.Connection,
+    system_instruction: str,
+) -> str:
+    """Call newer providers with a system instruction while preserving old test doubles."""
+    parameters = inspect.signature(provider.generate).parameters
+    if "system_instruction" in parameters:
+        return provider.generate(
+            prompt,
+            content_hash,
+            connection,
+            system_instruction=system_instruction,
+        )
+    return provider.generate(prompt, content_hash, connection)
 
 
 def _parse_generation(raw: str) -> tuple[str, list[int]]:

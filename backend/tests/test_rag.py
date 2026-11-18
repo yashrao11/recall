@@ -232,7 +232,10 @@ def test_generation_provider_uses_interactions_store_false_without_network(tmp_p
     database_path = tmp_path / "recall.sqlite3"
     initialize_database(database_path)
     with get_connection(database_path) as connection:
-        assert provider.generate("grounded prompt", "hash", connection) == "answer"
+        assert provider.generate(
+            "grounded prompt", "hash", connection, system_instruction="grounding rules"
+        ) == "answer"
     assert calls[0]["model"] == "gemini-3.1-flash-lite"
     assert calls[0]["store"] is False
     assert calls[0]["input"] == "grounded prompt"
+    assert calls[0]["system_instruction"] == "grounding rules"
