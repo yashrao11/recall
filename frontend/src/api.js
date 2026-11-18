@@ -83,6 +83,40 @@ export async function deleteRelationship(relationshipId) {
   return request(`/connections/relationships/${relationshipId}`, { method: "DELETE" });
 }
 
+// --- Study Mode ---
+
+export async function generateStudySet({ sourceId = null, objectId = null } = {}) {
+  return request("/study/generate", {
+    method: "POST",
+    body: JSON.stringify({ source_id: sourceId, object_id: objectId }),
+  });
+}
+
+export async function fetchDueCards(limit = 20) {
+  return request(`/study/due?limit=${limit}`);
+}
+
+export async function respondToCard(cardId, quality, sessionId = null) {
+  return request("/study/respond", {
+    method: "POST",
+    body: JSON.stringify({ card_id: cardId, quality, session_id: sessionId }),
+  });
+}
+
+export async function completeStudySession({ sourceId = null, objectId = null, startedAt = null, completedAt = null, questionsAttempted = 0, answersCorrect = 0 } = {}) {
+  return request("/study/sessions", {
+    method: "POST",
+    body: JSON.stringify({
+      source_id: sourceId,
+      object_id: objectId,
+      started_at: startedAt,
+      completed_at: completedAt,
+      questions_attempted: questionsAttempted,
+      answers_correct: answersCorrect,
+    }),
+  });
+}
+
 export function addDays(date, amount) {
   const value = new Date(`${date}T12:00:00`);
   value.setDate(value.getDate() + amount);
