@@ -14,7 +14,6 @@
 - **Revisit** content through a memory calendar
 - **Connect** knowledge via an AI-generated knowledge map
 - **Ask questions** grounded in your own files (RAG)
-- **Study** using auto-generated flashcards with spaced repetition
 
 > [!IMPORTANT]
 > **Stack:** Python + FastAPI backend · React + TypeScript + Tailwind frontend · SQLite + FAISS data layer · ColPali/BGE models for search
@@ -137,13 +136,13 @@ CREATE VIRTUAL TABLE fts_units USING fts5(
     tokenize='porter ascii'
 );
 
--- memory_events: every import, capture, study session
+-- memory_events: every import, capture, modification
 CREATE TABLE memory_events (
     event_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT,                    -- imported, modified, captured, studied
+    event_type TEXT,                    -- imported, modified, captured
     source_id  INTEGER REFERENCES sources(source_id) ON DELETE CASCADE,
     timestamp  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    date_basis TEXT                     -- created_at|modified_at|imported_at|captured_at|studied_at
+    date_basis TEXT                     -- created_at|modified_at|imported_at|captured_at
 );
 
 -- objects: topics, people, projects (knowledge graph nodes)
@@ -164,30 +163,6 @@ CREATE TABLE relationships (
     confidence       REAL,
     created_by       TEXT,              -- llm|user
     reviewed_status  TEXT DEFAULT 'unreviewed'
-);
-
--- study_sessions
-CREATE TABLE study_sessions (
-    session_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    object_id          INTEGER REFERENCES objects(object_id),
-    started_at         DATETIME,
-    completed_at       DATETIME,
-    questions_attempted INTEGER,
-    answers_correct    INTEGER
-);
-
--- flashcards (needed for study mode)
-CREATE TABLE flashcards (
-    card_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id    INTEGER REFERENCES sources(source_id),
-    unit_id      INTEGER REFERENCES document_units(unit_id),
-    card_type    TEXT,                  -- flashcard, mcq, short_answer
-    front        TEXT,
-    back         TEXT,
-    options      TEXT,                  -- JSON array for MCQ
-    next_review  DATETIME,
-    ease_factor  REAL DEFAULT 2.5,     -- SM-2
-    interval_days INTEGER DEFAULT 1
 );
 ```
 
@@ -425,9 +400,9 @@ Returns:
 
 ---
 
-## Phase 3 — AI Features (Ask, Knowledge Map, Study)
+## Phase 3 — AI Features (Ask, Knowledge Map)
 
-**Output:** Working RAG chat, graph view, and study mode
+**Output:** Working RAG chat and graph view
 
 ### 3.1 — LLM Provider Layer
 
@@ -543,51 +518,6 @@ Fallback: use `spaCy` NER + `KeyBERT` for keyword extraction (no LLM needed).
 
 ---
 
-### 3.4 — Study Mode
-
-**File:** `backend/app/ai/study_generator.py`
-
-```python
-STUDY_PROMPT = """
-Based on this content, generate study material:
-1. 3-5 flashcards (front: question, back: answer)
-2. 2-3 MCQs with 4 options and explanations
-3. 1-2 short-answer questions
-
-Return as JSON with source references (page numbers).
-"""
-```
-
-**SM-2 Spaced Repetition:**
-```python
-def sm2_next_review(ease_factor, interval, quality):
-    # quality: 0-5 (0=blackout, 5=perfect)
-    if quality < 3:
-        interval = 1
-    elif interval == 1:
-        interval = 6
-    else:
-        interval = round(interval * ease_factor)
-    ease_factor = max(1.3, ease_factor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
-    return interval, ease_factor
-```
-
-**APIs:**
-```
-POST /study/generate    → generate cards for a source or topic
-GET /study/due          → cards due for review today
-POST /study/respond     → submit answer quality, update SM-2 schedule
-POST /study/sessions    → record completed session → creates memory_event (studied_at)
-```
-
-**Frontend:** `frontend/src/views/StudyView.tsx`
-- Card flip animation (front/back)
-- MCQ with option selection + explanation reveal
-- Progress bar (cards done / total due)
-- After session: show score, weak areas, next review date
-
----
-
 ## Phase 4 — Memory Calendar & UI Polish
 
 **Output:** Complete, polished 3-panel UI with all features connected
@@ -603,8 +533,7 @@ Returns events grouped by day:
 ```json
 {
   "2025-11-15": [
-    {"event_type": "imported", "title": "ML Paper.pdf", "date_basis": "imported_at"},
-    {"event_type": "studied", "title": "Transformers flashcards", "date_basis": "studied_at"}
+    {"event_type": "imported", "title": "ML Paper.pdf", "date_basis": "imported_at"}
   ]
 }
 ```
@@ -635,9 +564,8 @@ Returns events grouped by day:
 | Home             | <CalendarView />                 | Related items     |
 | Search           | <AskView />                      | Metadata          |
 | Calendar         | <KnowledgeMapView />             | Recently revisited|
-| Knowledge Map    | <StudyView />                    |                   |
-| Ask My Memory    | <MemoryViewer />                 |                   |
-| Study Mode       |                                  |                   |
+| Knowledge Map    | <MemoryViewer />                 |                   |
+| Ask My Memory    | <CaptureView />                  |                   |
 | Pinned           |                                  |                   |
 | [Object counts]  |                                  |                   |
 +------------------+----------------------------------+-------------------+
@@ -737,8 +665,7 @@ for mode in modes:
 4. **Calendar demo:** navigate to a past date → "On This Day" memory
 5. **Ask My Memory:** ask "What is the difference between LSTM and GRU?" → show cited answer
 6. **Knowledge Map:** show topic graph, click "Transformers" node → evidence sources
-7. **Study Mode:** generate flashcards from a document, flip through 3 cards
-8. **Capture:** drag a screenshot into the app → it appears in search immediately
+7. **Capture:** drag a screenshot into the app → it appears in search immediately
 
 ---
 
@@ -778,8 +705,7 @@ flowchart TD
   N --> O["Calendar API + UI"]
   O --> P["RAG / Ask My Memory"]
   P --> Q["Entity Extraction\nKnowledge Map"]
-  Q --> R["Study Mode"]
-  R --> S["Capture\n(notes, extension, upload)"]
+  Q --> S["Capture\n(notes, extension, upload)"]
   S --> T["Polish + Eval"]
 ```
 
@@ -831,10 +757,6 @@ flowchart TD
 - [ ] Expose `GET /graph` endpoint
 - [ ] Build `KnowledgeMapView.tsx` — react-force-graph visualization
 - [ ] Add node click → evidence sidebar + edge edit/confirm/delete controls
-- [ ] Write `ai/study_generator.py` — card generation prompt
-- [ ] Write SM-2 scheduling logic
-- [ ] Expose `/study/generate`, `/study/due`, `/study/respond`, `/study/sessions`
-- [ ] Build `StudyView.tsx` — card flip, MCQ, progress bar
 
 ### Phase 4 — UI Polish
 - [ ] Write `calendar/events.py` — event queries grouped by day
@@ -849,8 +771,8 @@ flowchart TD
 - [ ] Light/dark theme
 - [ ] Loading skeletons, empty states, error boundaries
 - [ ] Keyboard navigation through results
-- [ ] Connect all views: "open in calendar", "study this", "find related"
-- [ ] **End-to-end smoke test:** add folder → index → search → ask → study
+- [ ] Connect all views: "open in calendar", "find related"
+- [ ] **End-to-end smoke test:** add folder → index → search → ask
 
 ### Phase 5 — Evaluation & Demo
 - [ ] Build `eval/queries.json` with 50+ labelled queries
@@ -891,9 +813,8 @@ If you must cut, deliver **in this priority order:**
 7. 🔵 Ask My Memory (RAG)
 8. 🔵 Memory Calendar
 9. 🟡 Knowledge Map
-10. 🟡 Study Mode
-11. ⚪ Browser extension
-12. ⚪ Tauri packaging
+10. ⚪ Browser extension
+11. ⚪ Tauri packaging
 
 > [!CAUTION]
 > Items 1–6 are **the deep learning core** of this project (retrieval + embeddings + visual models). These must be done and evaluated. Items 7+ are product features.
@@ -952,14 +873,12 @@ npm install @tanstack/react-query axios react-router-dom \
 | `backend/app/ai/provider.py` | Unified LLM provider interface |
 | `backend/app/ai/rag.py` | RAG pipeline for Ask My Memory |
 | `backend/app/ai/entity_extraction.py` | LLM/spaCy entity extractor |
-| `backend/app/ai/study_generator.py` | Flashcard/MCQ generator |
 | `backend/app/calendar/events.py` | Memory event queries |
 | `backend/app/api/sources.py` | Folder mount/remove endpoints |
 | `backend/app/api/search.py` | Search endpoint |
 | `backend/app/api/units.py` | Unit retrieval endpoint |
 | `backend/app/api/ask.py` | RAG Q&A endpoint |
 | `backend/app/api/graph.py` | Knowledge graph endpoint |
-| `backend/app/api/study.py` | Study mode endpoints |
 | `backend/app/api/calendar.py` | Calendar endpoints |
 | `backend/app/api/capture.py` | Note/upload capture endpoint |
 
@@ -980,7 +899,6 @@ npm install @tanstack/react-query axios react-router-dom \
 | `frontend/src/views/CalendarView.tsx` | Month/week/day calendar |
 | `frontend/src/views/AskView.tsx` | RAG chat interface |
 | `frontend/src/views/KnowledgeMapView.tsx` | Force graph |
-| `frontend/src/views/StudyView.tsx` | Flashcard study interface |
 | `frontend/src/views/CaptureView.tsx` | Note editor + drag-drop |
 
 ### Extension

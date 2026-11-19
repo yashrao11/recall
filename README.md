@@ -7,7 +7,7 @@
 
 Recall indexes the folders you choose (PDFs, slides, documents, screenshots, notes) and lets you
 **find** anything by meaning, words or visual content, **revisit** it on a memory calendar,
-**connect** it in a knowledge map, and **ask questions** or **study** from it, with every answer
+**connect** it in a knowledge map, and **ask questions** with every answer
 traced back to the original file and page.
 
 *Recall is the working project name. It should be reviewed before any public release because other
@@ -59,15 +59,14 @@ retrieving with several complementary methods.
 | 3 | **Memory calendar and timeline** | Day / week / month / year views, a visual memory wall, "On This Day", and recaps built only from recorded data. |
 | 4 | **Ask My Memory** | Chat that answers from your own files with clickable citations. Says "not enough evidence" when the files don't contain the answer. |
 | 5 | **Knowledge map** | Extracts topics, people and projects and links them. Every link shows its evidence and can be edited or removed. |
-| 6 | **Study mode** | Generates flashcards, MCQs and short-answer questions linked to source pages, with spaced-repetition scheduling. |
-| 7 | **Universal capture** | Folder mounting, drag-and-drop, in-app notes, browser extension for webpages, audio upload with transcription. |
+| 6 | **Universal capture** | Folder mounting, drag-and-drop, in-app notes, browser extension for webpages, audio upload with transcription. |
 
 ### Product principles
 
 1. **Local-first and user-controlled.** You pick every folder. Cloud AI is optional and clearly disclosed.
 2. **Search before chat.** Reliable retrieval is the foundation; AI answers are grounded in retrieved sources.
 3. **Preserve the original.** Results open the original file, page or slide. Recall never replaces a source with an approximation.
-4. **Trustworthy dates.** Created, modified, imported, captured and studied dates are kept separate. A file existing is never treated as proof you read it.
+4. **Trustworthy dates.** Created, modified, imported, and captured dates are kept separate. A file existing is never treated as proof you read it.
 5. **Explainable.** Results and answers show why they were produced and cite their sources.
 6. **Incremental.** Only new or changed files are reprocessed.
 
@@ -84,8 +83,7 @@ A three-panel desktop-style workspace.
 | Search             | Document / media viewer                | Related items       |
 | Calendar           | Ask My Memory chat                     | Metadata and source |
 | Knowledge Map      | Knowledge graph                        | Recently revisited  |
-| Ask My Memory      | Study cards and progress               |                     |
-| Study Mode         |                                        |                     |
+| Ask My Memory      | Capture inbox                          |                     |
 | Pinned collections |                                        |                     |
 | Objects with counts|                                        |                     |
 |  PDFs, Slides,     |                                        |                     |
@@ -95,7 +93,7 @@ A three-panel desktop-style workspace.
 +--------------------+----------------------------------------+---------------------+
 ```
 
-**Screens:** Home, Memory Calendar, Search, Memory Viewer, Ask My Memory, Knowledge Map, Study Mode,
+**Screens:** Home, Memory Calendar, Search, Memory Viewer, Ask My Memory, Knowledge Map,
 Capture Inbox.
 
 **Interaction:** global search always visible, `Ctrl/Cmd + K` command palette, keyboard navigation,
@@ -188,15 +186,7 @@ Ollama). Sending content to a cloud provider is an explicit, visible opt-in.
 
 These objects also populate the sidebar object types (Topics, People, Projects, and so on).
 
-### 4.6 Study mode
-
-1. Select a source or topic.
-2. The LLM generates flashcards, MCQs (with explanations) and short-answer questions, each saved with
-   its source reference.
-3. SM-2 spaced repetition schedules reviews and tracks weak topics.
-4. Each completed session becomes a `studied_at` event shown in the calendar.
-
-### 4.7 Capture
+### 4.6 Capture
 
 - **Folders:** mount, exclude, pause, resume, remove.
 - **Drag and drop / upload:** files go to a managed inbox and are processed like any source.
@@ -293,7 +283,6 @@ erDiagram
   SOURCES ||--o{ RELATIONSHIPS : evidences
   OBJECTS ||--o{ RELATIONSHIPS : from
   OBJECTS ||--o{ RELATIONSHIPS : to
-  OBJECTS ||--o{ STUDY_SESSIONS : studied_in
 
   SOURCES {
     int source_id PK
@@ -342,18 +331,10 @@ erDiagram
     string created_by
     string reviewed_status
   }
-  STUDY_SESSIONS {
-    int session_id PK
-    int object_id FK
-    datetime started_at
-    datetime completed_at
-    int questions_attempted
-    int answers_correct
-  }
 ```
 
 **Date rules.** `created_at`, `modified_at`, `imported_at`, `captured_at` and activity dates are
-separate fields. A download or file creation is never presented as proof of reading or studying.
+separate fields. A download or file creation is never presented as proof of reading.
 
 ## 8. Project structure
 
@@ -364,7 +345,7 @@ recall/
 │   │   ├── api/            # FastAPI routes
 │   │   ├── ingestion/      # scanner, extractors, OCR, chunking, embedding
 │   │   ├── retrieval/      # fts, semantic, visual, fusion, rerank
-│   │   ├── ai/             # provider interface, RAG, entity extraction, study generation
+│   │   ├── ai/             # provider interface, RAG, entity extraction
 │   │   ├── calendar/       # memory events, recaps
 │   │   ├── db/             # schema, migrations, queries
 │   │   └── workers/        # background indexing jobs
@@ -372,7 +353,7 @@ recall/
 ├── frontend/
 │   └── src/
 │       ├── components/     # cards, viewer, command palette
-│       ├── views/          # home, search, calendar, ask, map, study, inbox
+│       ├── views/          # home, search, calendar, ask, map, inbox
 │       └── lib/            # API client, state
 ├── extension/              # browser capture extension (Manifest V3)
 ├── eval/
@@ -391,7 +372,7 @@ recall/
 - Python 3.11+, Node.js 20+
 - Tesseract or PaddleOCR; LibreOffice (for PPTX rendering)
 - Recommended: NVIDIA GPU with 8 GB+ VRAM for ColPali/ColQwen2 (otherwise the lighter visual model is used)
-- An LLM API key, or Ollama for local models (only needed for Ask, Knowledge Map and Study features)
+- An LLM API key, or Ollama for local models (only needed for Ask and Knowledge Map features)
 
 **Run locally**
 
@@ -441,8 +422,6 @@ then search.
 | GET | `/calendar?view=month&date=...` | Memory events grouped by date |
 | GET | `/graph` | Objects and relationships |
 | PATCH | `/relationships/{id}` | Confirm, edit or delete a link |
-| POST | `/study/generate` | Create flashcards and quizzes from sources |
-| POST | `/study/sessions` | Record a study session |
 | POST | `/capture` | Receive a note, webpage or upload |
 
 ## 11. Evaluation
@@ -515,7 +494,6 @@ model and hardware; LLM features need an API key or a capable local model.
 - [ ] Memory calendar, wall, timeline, On This Day
 - [ ] Ask My Memory with citations
 - [ ] Knowledge map with editable relationships
-- [ ] Study mode with spaced repetition
 - [ ] Capture: notes, drag-and-drop, browser extension, audio
 - [ ] Command palette, themes, polish
 - [ ] Evaluation results published

@@ -137,7 +137,6 @@ CREATE TABLE IF NOT EXISTS relationships (
 
 CREATE TABLE IF NOT EXISTS study_sessions (
     session_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id INTEGER REFERENCES sources(source_id) ON DELETE SET NULL,
     object_id INTEGER REFERENCES objects(object_id) ON DELETE SET NULL,
     started_at TEXT NOT NULL,
     completed_at TEXT,
@@ -163,7 +162,6 @@ CREATE INDEX IF NOT EXISTS idx_sources_status ON sources(indexing_status);
 CREATE INDEX IF NOT EXISTS idx_units_source ON document_units(source_id);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON memory_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_flashcards_review ON flashcards(next_review);
-CREATE INDEX IF NOT EXISTS idx_study_sessions_source ON study_sessions(source_id, completed_at);
 """
 
 
@@ -186,7 +184,6 @@ INITIAL_RELATIONSHIP_TYPES = {
 MIGRATIONS = (
     (1, "knowledge_connections_schema_hardening", "_migration_knowledge_connections_v1"),
     (2, "relationship_unsupported_review_status", "_migration_relationship_unsupported_v2"),
-    (3, "study_session_source_scope", "_migration_study_session_source_scope_v3"),
 )
 
 
@@ -709,20 +706,6 @@ def _assert_no_unexpected_dependencies(connection: sqlite3.Connection) -> None:
             unexpected.append(f"{row[0]}:{row[1]}")
     if unexpected:
         raise MigrationConflict("unexpected dependencies: " + ", ".join(sorted(unexpected)))
-
-
-def _migration_study_session_source_scope_v3(connection: sqlite3.Connection) -> None:
-    """Add source scope to legacy study sessions without rebuilding user data."""
-    columns = {row[1] for row in connection.execute("PRAGMA table_info(study_sessions)")}
-    if "source_id" not in columns:
-        connection.execute(
-            "ALTER TABLE study_sessions ADD COLUMN source_id INTEGER "
-            "REFERENCES sources(source_id) ON DELETE SET NULL"
-        )
-    connection.execute(
-        "CREATE INDEX IF NOT EXISTS idx_study_sessions_source "
-        "ON study_sessions(source_id, completed_at)"
-    )
 
 
 def cache_key(provider: str, operation: str, content_hash: str) -> str:
