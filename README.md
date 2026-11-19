@@ -287,7 +287,7 @@ video understanding.
 
 ## 7. Data model
 
-```mermaid
+```text
 erDiagram
   SOURCES ||--o{ DOCUMENT_UNITS : contains
   SOURCES ||--o{ MEMORY_EVENTS : records
@@ -352,6 +352,25 @@ erDiagram
     int answers_correct
   }
 ```
+
+### Quick start commands
+
+After the Python environment and Node dependencies are installed, run these commands in two
+terminals. The commands assume both terminals are already opened in the project directories.
+
+Backend:
+
+```bash
+PYTHONPATH=backend python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Frontend:
+
+```bash
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open `http://127.0.0.1:5173`. Stop either process with `Control+C`.
 
 **Date rules.** `created_at`, `modified_at`, `imported_at`, `captured_at` and activity dates are
 separate fields. A download or file creation is never presented as proof of reading or studying.
