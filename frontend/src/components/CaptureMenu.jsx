@@ -40,13 +40,34 @@ export default function CaptureMenu({ onClose, onCaptured }) {
         payload = await captureFiles(files);
       } else {
         if (!folder.trim()) throw new Error("Enter a folder to import.");
-        const mounted = await request("/sources/folders", { method: "POST", body: JSON.stringify({ path: folder.trim() }) });
-        payload = { status: "captured", items: [{ status: "indexed", title: `Folder ${mounted.label}`, indexing_status: "pending" }] };
-        await request("/index/run", { method: "POST" });
+        let mounted;
+        try {
+          mounted = await request("/sources/folders", { method: "POST", body: JSON.stringify({ path: folder.trim() }) });
+        } catch (error) {
+          if (error.message !== "folder is already mounted") throw error;
+          mounted = await request("/sources/folders/rescan", { method: "POST", body: JSON.stringify({ path: folder.trim() }) });
+        }
+        const indexing = await request(`/index/run?mount_id=${mounted.mount_id}`, { method: "POST" });
+        const inventory = await request(`/sources?mount_id=${mounted.mount_id}`);
+        payload = {
+          status: indexing.errors ? "captured_with_errors" : "captured",
+          items: (inventory.sources || []).map((source) => ({
+            source_id: source.source_id,
+            title: source.title || source.filename,
+            filename: source.filename,
+            status: source.excluded
+              ? "unavailable"
+              : ["done", "partial"].includes(source.indexing_status)
+              ? "indexed"
+              : source.indexing_status === "error" ? "error" : source.indexing_status,
+            indexing_status: source.indexing_status,
+            error: source.indexing_error,
+          })),
+        };
       }
       setResults(payload.items || []);
-      const accepted = (payload.items || []).filter((item) => ["indexed", "duplicate", "error"].includes(item.status)).length;
-      const failed = (payload.items || []).filter((item) => ["rejected", "error"].includes(item.status)).length;
+      const accepted = (payload.items || []).filter((item) => item.status !== "rejected").length;
+      const failed = (payload.items || []).filter((item) => ["rejected", "error", "unavailable"].includes(item.status)).length;
       setMessage({ kind: failed ? "warning" : "success", text: `${accepted} item${accepted === 1 ? "" : "s"} received${failed ? ` · ${failed} need attention` : ""}.` });
       onCaptured?.();
       if (tab === "note" || tab === "webpage") {
@@ -104,7 +125,7 @@ export default function CaptureMenu({ onClose, onCaptured }) {
         <button className="primary-button" disabled={busy}>{busy ? "Saving…" : tab === "folder" ? "Mount and index" : "Save to Recall"}</button>
       </form>
       {message && <div className={`capture-message ${message.kind}`}>{message.text}</div>}
-      {results.length > 0 && <div className="capture-results"><strong>Processing results</strong>{results.map((item, index) => <div className="capture-result" key={`${item.source_id || item.filename || index}`}><span><b>{item.title || item.filename || "Capture"}</b><small>{item.status === "indexed" ? `Indexed · ${item.indexing_status || "ready"}` : item.status === "duplicate" ? "Already captured" : item.status === "error" ? "Captured, indexing failed" : item.error || "Rejected"}</small></span>{item.status === "error" && item.source_id && <button onClick={() => retry(item)} disabled={busy}>Retry</button>}</div>)}</div>}
+      {results.length > 0 && <div className="capture-results"><strong>Processing results</strong>{results.map((item, index) => <div className="capture-result" key={`${item.source_id || item.filename || index}`}><span><b>{item.title || item.filename || "Capture"}</b><small>{item.status === "indexed" ? `Indexed · ${item.indexing_status || "ready"}` : item.status === "duplicate" ? "Already captured" : item.status === "error" ? `Captured, indexing failed${item.error ? ` · ${item.error}` : ""}` : item.status === "unavailable" ? `File unavailable${item.error ? ` · ${item.error}` : ""}` : item.status === "pending" ? "Waiting for indexing" : item.status === "processing" ? "Indexing…" : item.error || "Rejected"}</small></span>{item.status === "error" && item.source_id && <button onClick={() => retry(item)} disabled={busy}>Retry</button>}</div>)}</div>}
     </div>
   </div>;
 }

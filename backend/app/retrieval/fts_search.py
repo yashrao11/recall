@@ -10,9 +10,14 @@ def sanitise_fts_query(query: str) -> str:
     phrases = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', query)
     plain = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', " ", query)
     operator_words = {"and", "or", "not", "near"}
+    query_stopwords = {
+        "a", "an", "are", "be", "does", "do", "for", "how", "i", "in", "is", "it",
+        "me", "my", "of", "on", "please", "tell", "that", "the", "this", "to", "was",
+        "what", "which", "who", "why", "with",
+    }
     tokens = [
         token for token in re.findall(r"[A-Za-z0-9_]+", plain)
-        if token.lower() not in operator_words
+        if token.lower() not in operator_words and token.lower() not in query_stopwords
     ]
     parts = [f'"{token.replace(chr(34), "")}"' for token in tokens]
     parts.extend(f'"{phrase.replace(chr(34), " ").strip()}"' for phrase in phrases if phrase.strip())
@@ -30,7 +35,11 @@ def keyword_search(
     match_query = sanitise_fts_query(query)
     if not match_query:
         return []
-    clauses = ["fts_units MATCH ?"]
+    clauses = [
+        "fts_units MATCH ?",
+        "s.indexing_status IN ('done', 'partial')",
+        "s.excluded = 0",
+    ]
     params: list[object] = [match_query]
     if source_type:
         clauses.append("s.source_type = ?")

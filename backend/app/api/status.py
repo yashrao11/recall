@@ -51,7 +51,7 @@ def resume_indexing(request: Request) -> dict:
 
 
 @router.post("/run")
-def run_indexing(request: Request) -> dict:
+def run_indexing(request: Request, mount_id: int | None = None) -> dict:
     if request.app.state.indexing_paused:
         return {"queued": 0, "completed": 0, "partial": 0, "errors": 0, "paused": True}
     settings = request.app.state.settings
@@ -68,7 +68,7 @@ def run_indexing(request: Request) -> dict:
     except ProviderUnavailable as exc:
         warnings.append(str(exc))
         metadata_provider = LocalMetadataProvider()
-    result = run_pending(settings, embedding_provider, metadata_provider)
+    result = run_pending(settings, embedding_provider, metadata_provider, mount_id=mount_id)
     warnings.extend(str(item) for item in result.get("warnings", []))
     result.update(
         {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -76,7 +77,12 @@ def _index_source_in_transaction(
         )
 
     metadata_provider = metadata_provider or LocalMetadataProvider()
-    extracted_units = extract_file(Path(source["original_path"]), source["source_type"])
+    extracted_units = _prepare_extracted_units(
+        extract_file(Path(source["original_path"]), source["source_type"]),
+        embedding_provider or metadata_provider,
+        connection,
+        warnings,
+    )
 
     text_store = visual_store = None
     if embedding_provider is not None:
@@ -88,6 +94,12 @@ def _index_source_in_transaction(
             text_store = visual_store = None
 
     for extracted in extracted_units:
+        if extracted.warning:
+            warnings.append(extracted.warning)
+        if not extracted.text.strip() and extracted.image_bytes is None:
+            location = f" {extracted.page_or_slide}" if extracted.page_or_slide is not None else ""
+            warnings.append(f"No extractable text was found for {extracted.unit_type}{location}")
+            continue
         for chunk in chunk_text(extracted.text):
             unit_hash = _unit_hash(source["content_hash"], extracted, chunk.ordinal, chunk.text)
             used_local_metadata = getattr(metadata_provider, "name", "") == "local-heuristic"
@@ -187,17 +199,61 @@ def _index_source_in_transaction(
     return result
 
 
+def _prepare_extracted_units(
+    extracted_units: list[ExtractedUnit],
+    embedding_provider: object | None,
+    connection: sqlite3.Connection,
+    warnings: list[str],
+) -> list[ExtractedUnit]:
+    """Complete image/page text extraction before units enter FTS or RAG.
+
+    The extractor performs local OCR when an OCR binary is available. A
+    configured multimodal provider is an optional second boundary for scanned
+    pages and images that still have no text. Provider failures become visible
+    partial-indexing warnings and never abort unrelated units.
+    """
+    prepared: list[ExtractedUnit] = []
+    extract_image_text = getattr(embedding_provider, "extract_image_text", None)
+    for extracted in extracted_units:
+        if extracted.text.strip() or extracted.image_bytes is None:
+            prepared.append(extracted)
+            continue
+        if callable(extract_image_text):
+            try:
+                text = extract_image_text(
+                    extracted.image_bytes,
+                    extracted.image_mime_type or "application/octet-stream",
+                    _hash_bytes(extracted.image_bytes),
+                    connection,
+                )
+                if text and text.strip():
+                    prepared.append(replace(extracted, text=text.strip(), warning=None))
+                    continue
+            except (ProviderUnavailable, RuntimeError, ValueError) as exc:
+                warnings.append(
+                    f"Visual text extraction unavailable for unit "
+                    f"{extracted.page_or_slide or 'image'}: {exc}"
+                )
+        prepared.append(extracted)
+    return prepared
+
+
 def run_pending(
     settings: Settings,
     embedding_provider: EmbeddingProvider | None = None,
     metadata_provider: UnitMetadataProvider | None = None,
+    mount_id: int | None = None,
 ) -> dict[str, object]:
     with get_connection(settings.database_path) as connection:
+        query = "SELECT source_id FROM sources WHERE indexing_status = 'pending'"
+        parameters: tuple[object, ...] = ()
+        if mount_id is not None:
+            query += " AND mount_id = ?"
+            parameters = (mount_id,)
+        query += " ORDER BY source_id"
         source_ids = [
             int(row["source_id"])
-            for row in connection.execute(
-                "SELECT source_id FROM sources WHERE indexing_status = 'pending' ORDER BY source_id"
-            )
+            for row in connection.execute(query, parameters)
         ]
     completed = partial = errors_count = 0
     results: list[dict[str, object]] = []

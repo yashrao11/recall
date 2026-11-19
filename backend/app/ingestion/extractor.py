@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
+import subprocess
 
 
 @dataclass(frozen=True)
@@ -9,6 +11,7 @@ class ExtractedUnit:
     text: str
     image_bytes: bytes | None = None
     image_mime_type: str | None = None
+    warning: str | None = None
 
 
 def extract_file(path: Path, source_type: str) -> list[ExtractedUnit]:
@@ -24,7 +27,18 @@ def extract_file(path: Path, source_type: str) -> list[ExtractedUnit]:
         mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(
             path.suffix.lower(), "application/octet-stream"
         )
-        return [ExtractedUnit("image", None, "", path.read_bytes(), mime)]
+        image_bytes = path.read_bytes()
+        text = _ocr_image(image_bytes)
+        return [
+            ExtractedUnit(
+                "image",
+                None,
+                text or "",
+                image_bytes,
+                mime,
+                None if text is not None else "Local OCR is unavailable for this image",
+            )
+        ]
     raise ValueError(f"Unsupported source type: {source_type}")
 
 
@@ -35,8 +49,23 @@ def _extract_pdf(path: Path) -> list[ExtractedUnit]:
     with fitz.open(path) as document:
         for page_number, page in enumerate(document, start=1):
             pixmap = page.get_pixmap(dpi=144, alpha=False)
+            image_bytes = pixmap.tobytes("png")
+            text = page.get_text("text").strip()
+            ocr_text = None
+            warning = None
+            if not text:
+                ocr_text = _ocr_image(image_bytes)
+                if ocr_text is None:
+                    warning = f"Local OCR is unavailable for PDF page {page_number}"
             units.append(
-                ExtractedUnit("page", page_number, page.get_text("text"), pixmap.tobytes("png"), "image/png")
+                ExtractedUnit(
+                    "page",
+                    page_number,
+                    text or ocr_text or "",
+                    image_bytes,
+                    "image/png",
+                    warning,
+                )
             )
     return units
 
@@ -60,4 +89,24 @@ def _extract_pptx(path: Path) -> list[ExtractedUnit]:
         )
         units.append(ExtractedUnit("slide", slide_number, text))
     return units
+
+
+def _ocr_image(image_bytes: bytes) -> str | None:
+    """Use an already-installed local Tesseract binary without adding a model dependency."""
+    executable = shutil.which("tesseract")
+    if executable is None:
+        return None
+    try:
+        result = subprocess.run(
+            [executable, "stdin", "stdout", "--psm", "6"],
+            input=image_bytes,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode("utf-8", errors="replace").strip()
 

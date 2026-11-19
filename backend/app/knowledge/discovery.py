@@ -11,9 +11,11 @@ from app.db.database import _normalize_entity_title
 
 
 _GENERIC_TERMS = {
-    "about", "appendix", "chapter", "contents", "document", "draft", "example", "file",
+    "about", "and", "appendix", "built", "by", "chapter", "com", "contents", "created",
+    "csv", "document", "draft", "example", "file", "from",
     "figure", "image", "introduction", "lesson", "notes", "page", "report", "results",
-    "section", "slide", "slides", "summary", "table", "test", "theory", "untitled",
+    "section", "slide", "slides", "summary", "table", "test", "theory", "that", "the",
+    "this", "untitled", "used", "uses", "using", "with",
 }
 _CONCEPT_PHRASES = (
     "active learning", "attention mechanism", "convolutional neural network", "deep learning",
@@ -74,6 +76,8 @@ def discover_source(connection: sqlite3.Connection, source_id: int) -> Discovery
     unit_entities: dict[int, set[int]] = {}
     for candidate in _deduplicate_candidates(candidates):
         object_id, created = _resolve_entity(connection, candidate)
+        if object_id is None:
+            continue
         if created:
             entities_created += 1
         else:
@@ -261,6 +265,10 @@ def _phrase_candidates(
     value = _clean_phrase(text)
     if not value or _is_generic(value):
         return []
+    normalized = _normalize_entity_title(value)
+    words = normalized.split()
+    if method == "tag" and len(words) == 1 and (len(words[0]) < 4 or words[0] in _GENERIC_TERMS):
+        return []
     return [EntityCandidate(value, default_type, source_id, unit_id, method)]
 
 
@@ -290,14 +298,17 @@ def _deduplicate_candidates(candidates: Iterable[EntityCandidate]) -> list[Entit
     return list(result.values())
 
 
-def _resolve_entity(connection: sqlite3.Connection, candidate: EntityCandidate) -> tuple[int, bool]:
+def _resolve_entity(connection: sqlite3.Connection, candidate: EntityCandidate) -> tuple[int | None, bool]:
     normalized = _normalize_entity_title(candidate.title)
+    single_local_tag = candidate.discovery_method == "tag" and len(normalized.split()) == 1
     row = connection.execute(
         "SELECT object_id, status, created_by FROM objects "
         "WHERE object_type = ? AND normalized_title = ?",
         (candidate.object_type, normalized),
     ).fetchone()
     if row is not None:
+        if single_local_tag and row["created_by"] not in {"user", "legacy"}:
+            return None, False
         if row["status"] == "inactive" and row["created_by"] in {"system", "llm"}:
             connection.execute(
                 "UPDATE objects SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE object_id = ?",
@@ -307,7 +318,7 @@ def _resolve_entity(connection: sqlite3.Connection, candidate: EntityCandidate) 
 
     matches: list[sqlite3.Row] = []
     for object_row in connection.execute(
-        "SELECT object_id, aliases_json FROM objects "
+        "SELECT object_id, aliases_json, created_by FROM objects "
         "WHERE object_type = ?",
         (candidate.object_type,),
     ):
@@ -316,6 +327,8 @@ def _resolve_entity(connection: sqlite3.Connection, candidate: EntityCandidate) 
         except (TypeError, json.JSONDecodeError):
             aliases = []
         if any(_normalize_entity_title(str(alias)) == normalized for alias in aliases):
+            if single_local_tag and object_row["created_by"] not in {"user", "legacy"}:
+                continue
             matches.append(object_row)
     if len(matches) == 1:
         if matches[0]["created_by"] in {"system", "llm"}:
@@ -324,6 +337,11 @@ def _resolve_entity(connection: sqlite3.Connection, candidate: EntityCandidate) 
                 (matches[0]["object_id"],),
             )
         return int(matches[0]["object_id"]), False
+    # Local metadata tags are intentionally conservative: a single token is
+    # only useful when it already names an explicit user/legacy entity or
+    # alias. This prevents ordinary words becoming graph nodes.
+    if single_local_tag and not matches:
+        return None, False
     return _create_entity(connection, candidate, normalized)
 
 

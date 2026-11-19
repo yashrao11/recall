@@ -91,6 +91,9 @@ def main() -> int:
                     "VALUES (?, ?, ?, ?)",
                     (source_id, "image", "synthetic neural network diagram", "neural network diagram"),
                 ).lastrowid
+                connection.execute(
+                    "UPDATE sources SET indexing_status = 'done' WHERE source_id = ?", (source_id,)
+                )
                 visual_store = FaissVectorStore(data_dir / "visual.index", DIMENSION)
                 visual_store.add(int(unit_id), relevant_vector)
                 visual_store.persist()

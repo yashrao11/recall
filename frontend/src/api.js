@@ -51,39 +51,6 @@ export async function deleteConversation(conversationId) {
   return request(`/conversations/${conversationId}`, { method: "DELETE" });
 }
 
-export async function fetchEntities({ query = "", type = "", status = "", limit = 50, offset = 0 } = {}) {
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  if (query.trim()) params.set("q", query.trim());
-  if (type) params.set("type", type);
-  if (status) params.set("status", status);
-  return request(`/connections/entities?${params.toString()}`);
-}
-
-export async function fetchEntityDetail(objectId, includeUnsupported = false) {
-  const suffix = includeUnsupported ? "?include_unsupported=true" : "";
-  return request(`/connections/entities/${objectId}${suffix}`);
-}
-
-export async function fetchSourceConnections(sourceId, includeUnsupported = false) {
-  const suffix = includeUnsupported ? "?include_unsupported=true" : "";
-  return request(`/connections/sources/${sourceId}${suffix}`);
-}
-
-export async function createRelationship(payload) {
-  return request("/connections/relationships", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export async function reviewRelationship(relationshipId, reviewedStatus) {
-  return request(`/connections/relationships/${relationshipId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ reviewed_status: reviewedStatus }),
-  });
-}
-
-export async function deleteRelationship(relationshipId) {
-  return request(`/connections/relationships/${relationshipId}`, { method: "DELETE" });
-}
-
 export async function captureNote({ title, content }) {
   return request("/capture", { method: "POST", body: JSON.stringify({ type: "note", title, content }) });
 }
@@ -101,6 +68,10 @@ export async function captureFiles(files) {
 
 export async function retryCapture(sourceId) {
   return request(`/capture/${sourceId}/retry`, { method: "POST" });
+}
+
+export async function revealSource(sourceId) {
+  return request(`/sources/${sourceId}/reveal`, { method: "POST" });
 }
 
 // --- Study Mode ---
@@ -135,6 +106,39 @@ export async function completeStudySession({ sourceId = null, objectId = null, s
       answers_correct: answersCorrect,
     }),
   });
+}
+
+export async function fetchEntities({ query = "", type = "", status = "", limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (query.trim()) params.set("q", query.trim());
+  if (type) params.set("type", type);
+  if (status) params.set("status", status);
+  return request(`/connections/entities?${params.toString()}`);
+}
+
+export async function fetchEntityDetail(objectId, includeUnsupported = false) {
+  const suffix = includeUnsupported ? "?include_unsupported=true" : "";
+  return request(`/connections/entities/${objectId}${suffix}`);
+}
+
+export async function fetchSourceConnections(sourceId, includeUnsupported = false) {
+  const suffix = includeUnsupported ? "?include_unsupported=true" : "";
+  return request(`/connections/sources/${sourceId}${suffix}`);
+}
+
+export async function createRelationship(payload) {
+  return request("/connections/relationships", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function reviewRelationship(relationshipId, reviewedStatus) {
+  return request(`/connections/relationships/${relationshipId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ reviewed_status: reviewedStatus }),
+  });
+}
+
+export async function deleteRelationship(relationshipId) {
+  return request(`/connections/relationships/${relationshipId}`, { method: "DELETE" });
 }
 
 export function addDays(date, amount) {

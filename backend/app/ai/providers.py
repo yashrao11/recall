@@ -109,6 +109,34 @@ class GeminiProvider:
         put_cached_response(connection, key, content_hash, self.name, "embed_image", values)
         return values
 
+    def extract_image_text(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        content_hash: str,
+        connection: sqlite3.Connection,
+    ) -> str:
+        """Extract readable text from an image or scanned page using Gemini vision."""
+        self._ensure_cloud_allowed()
+        key = cache_key(self.name, "extract_image_text", content_hash)
+        cached = get_cached_response(connection, key)
+        if cached is not None:
+            return str(cached)
+        from google.genai import types
+
+        response = self._client.models.generate_content(
+            model=self.metadata_model,
+            contents=[
+                "Transcribe only the readable text in this image. Return plain text. "
+                "If there is no readable text, return an empty string. Do not describe the image "
+                "or invent missing content.",
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            ],
+        )
+        text = str(getattr(response, "text", "") or "").strip()
+        put_cached_response(connection, key, content_hash, self.name, "extract_image_text", text)
+        return text
+
     def describe(
         self, text: str, image_bytes: bytes | None, mime_type: str | None, content_hash: str,
         connection: sqlite3.Connection,

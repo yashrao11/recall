@@ -4,6 +4,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: #f5f3ef; }
 button, input { font: inherit; }
+.search-result-shell { border-bottom: 1px solid var(--line); }.search-result-actions { display: flex; gap: 8px; align-items: center; padding: 0 0 10px 101px; }.search-result-actions button { border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; color: var(--accent); background: var(--surface); font-size: 9px; }.search-result-actions small { color: var(--muted); font-size: 9px; }
 button { border: 0; cursor: pointer; }
 .app { --ink: #27241f; --muted: #8c877d; --line: #e5e1da; --surface: #fffdfa; --soft: #f8f6f2; --accent: #d87942; --accent-soft: #f6e4d7; --green: #55806c; min-height: 100vh; background: #f5f3ef; color: var(--ink); transition: background .2s, color .2s; }
 .app.dark { --ink: #eeeae3; --muted: #9e9a91; --line: #383633; --surface: #242321; --soft: #2d2b28; --accent: #e49763; --accent-soft: #473126; --green: #82ab96; background: #1d1c1a; }

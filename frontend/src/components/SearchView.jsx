@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { API, request } from "../api";
+import { API, request, revealSource } from "../api";
 
 const SEARCH_MODES = ["keyword", "semantic", "visual", "hybrid", "hybrid_rerank"];
 
@@ -52,6 +52,17 @@ export default function SearchView({ initialQuery = "" }) {
 }
 
 function SearchResult({ result, mode, index }) {
+  const [revealMessage, setRevealMessage] = useState("");
+  async function reveal() {
+    setRevealMessage("");
+    try {
+      await revealSource(result.source_id);
+      setRevealMessage("Opened in Finder");
+    } catch (error) {
+      setRevealMessage(error.message);
+    }
+  }
+
   const content = <>
     <div className="search-result-media">
       {result.thumbnail_url ? <img src={`${API}${result.thumbnail_url}`} alt="" /> : <div className="result-icon">{result.file_type === "pdf" ? "▧" : "✦"}</div>}
@@ -65,6 +76,6 @@ function SearchResult({ result, mode, index }) {
   </>;
   const key = result.unit_id || result.source_id || index;
   return result.source_id
-    ? <a className="search-result" href={`${API}/sources/${result.source_id}/file`} target="_blank" rel="noreferrer" key={key}>{content}</a>
+    ? <div className="search-result-shell" key={key}><a className="search-result" href={`${API}/sources/${result.source_id}/file`} target="_blank" rel="noreferrer">{content}</a><div className="search-result-actions"><button type="button" onClick={reveal}>Reveal in Finder</button>{revealMessage && <small>{revealMessage}</small>}</div></div>
     : <article className="search-result" key={key}>{content}</article>;
 }
