@@ -7,6 +7,8 @@ import {
   fetchEntityDetail,
   fetchSourceConnections,
   reviewRelationship,
+  revealSource,
+  sourceNeedsFinder,
 } from "../api";
 
 const ENTITY_TYPE_PRIORITY = { person: 5, project: 5, organization: 5, place: 4, event: 4, concept: 3, topic: 2 };
@@ -120,9 +122,12 @@ export default function ConnectionsView({ sources = [] }) {
     catch (reason) { setError(reason.message); }
   }
 
-  function openSource(source) {
+  async function openSource(source) {
     if (source?.capture_url) window.open(source.capture_url, "_blank", "noopener,noreferrer");
-    else if (source?.source_id) window.open(`${API}/sources/${source.source_id}/open`, "_blank", "noopener,noreferrer");
+    else if (source?.source_id && sourceNeedsFinder(source.filename, source.file_type || source.source_type)) {
+      try { await revealSource(source.source_id); setNotice("Source revealed in Finder."); }
+      catch (reason) { setError(reason.message); }
+    } else if (source?.source_id) window.open(`${API}/sources/${source.source_id}/open`, "_blank", "noopener,noreferrer");
   }
 
   const source = sourceDetail?.source;
@@ -170,7 +175,7 @@ function Evidence({ evidence, onOpenSource, compact = false }) {
   const [expanded, setExpanded] = useState(false);
   const passages = evidence.passages || [{ page: evidence.page, excerpt: evidence.excerpt }];
   const visible = expanded ? passages : passages.slice(0, 1);
-  return <div className={`evidence-item ${compact ? "compact" : ""}`}><div><strong>{evidence.source_title || `Source ${evidence.source_id}`}</strong>{evidence.page != null && <span>Page {evidence.page}</span>}{evidence.passage_count > 1 && <small>{evidence.passage_count} passages</small>}</div>{visible.map((passage, index) => <p key={`${passage.unit_id || "passage"}-${index}`}>{readableConnectionExcerpt(passage.excerpt) || "Text preview unavailable."}{passage.page != null && passage.page !== evidence.page ? ` · Page ${passage.page}` : ""}</p>)}<small>{evidence.discovery_method || "indexed evidence"}{evidence.confidence != null ? ` · ${Math.round(evidence.confidence * 100)}% confidence` : ""}</small><div className="evidence-item-actions">{evidence.source_id && <button className="text-button" onClick={() => onOpenSource({ source_id: evidence.source_id })}>Open source</button>}{passages.length > 1 && <button className="text-button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : `Show ${passages.length - 1} more`}</button>}</div></div>;
+  return <div className={`evidence-item ${compact ? "compact" : ""}`}><div><strong>{evidence.source_title || `Source ${evidence.source_id}`}</strong>{evidence.page != null && <span>Page {evidence.page}</span>}{evidence.passage_count > 1 && <small>{evidence.passage_count} passages</small>}</div>{visible.map((passage, index) => <p key={`${passage.unit_id || "passage"}-${index}`}>{readableConnectionExcerpt(passage.excerpt) || "Text preview unavailable."}{passage.page != null && passage.page !== evidence.page ? ` · Page ${passage.page}` : ""}</p>)}<small>{evidence.discovery_method || "indexed evidence"}{evidence.confidence != null ? ` · ${Math.round(evidence.confidence * 100)}% confidence` : ""}</small><div className="evidence-item-actions">{evidence.source_id && <button className="text-button" onClick={() => onOpenSource({ ...evidence, filename: evidence.filename || evidence.source_title })}>Open source</button>}{passages.length > 1 && <button className="text-button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : `Show ${passages.length - 1} more`}</button>}</div></div>;
 }
 
 function readableConnectionExcerpt(value) {

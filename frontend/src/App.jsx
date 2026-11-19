@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API, deleteConversation, deleteSource, fetchCalendar, fetchConversations, localDate, request, shiftPeriod } from "./api";
+import { API, deleteConversation, deleteSource, fetchCalendar, fetchConversations, localDate, request, revealSource, shiftPeriod, sourceNeedsFinder } from "./api";
 import Sidebar from "./components/Sidebar";
 import ContextPanel from "./components/ContextPanel";
 import MiniCalendar, { eventDatesForMonth } from "./components/MiniCalendar";
@@ -81,7 +81,13 @@ export default function App() {
   async function refreshAfterCapture() {
     await Promise.all([refreshSources(), refreshStatus(), refreshMonth(month), refreshCalendar(calendarView, calendarView === "month" ? month : selectedDate), refreshContext(selectedDate)]);
   }
-  function openEvent(event) { if (event.metadata?.capture_url) window.open(event.metadata.capture_url, "_blank", "noopener,noreferrer"); else if (event.source_id) window.open(`${API}/sources/${event.source_id}/open`, "_blank", "noopener,noreferrer"); }
+  async function openEvent(event) {
+    if (event.metadata?.capture_url) window.open(event.metadata.capture_url, "_blank", "noopener,noreferrer");
+    else if (event.source_id && sourceNeedsFinder(event.metadata?.filename || event.title, event.file_type)) {
+      try { await revealSource(event.source_id); setMessage("Source revealed in Finder."); }
+      catch (error) { setMessage(error.message); }
+    } else if (event.source_id) window.open(`${API}/sources/${event.source_id}/open`, "_blank", "noopener,noreferrer");
+  }
   async function confirmSourceDelete() {
     if (!deleteCandidate?.source_id) return;
     setDeleteBusy(true);

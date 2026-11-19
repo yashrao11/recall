@@ -6,6 +6,8 @@ import {
   fetchEntities,
   generateStudySet,
   respondToCard,
+  revealSource,
+  sourceNeedsFinder,
 } from "../api";
 
 // SM-2 quality labels
@@ -275,6 +277,27 @@ export default function StudyView({ sources = [] }) {
   );
 }
 
+function StudyEvidenceLink({ evidence }) {
+  const [message, setMessage] = useState("");
+  const filename = evidence.filename || evidence.title || "";
+  const finderFallback = sourceNeedsFinder(filename, evidence.file_type || evidence.source_type);
+
+  async function openInFinder() {
+    setMessage("");
+    try {
+      await revealSource(evidence.source_id);
+      setMessage("Revealed in Finder");
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  if (finderFallback) {
+    return <button type="button" className="study-evidence-ref" onClick={openInFinder}>↗ Reveal in Finder{evidence.page != null ? `, p. ${evidence.page}` : ""}{message ? ` · ${message}` : ""}</button>;
+  }
+  return <a href={`${API}/sources/${evidence.source_id}/open`} target="_blank" rel="noopener noreferrer" className="study-evidence-ref">↗ {filename}{evidence.page != null ? `, p. ${evidence.page}` : ""}</a>;
+}
+
 function CardPreview({ card }) {
   const [open, setOpen] = useState(false);
   const typeLabel = { flashcard: "Flashcard", mcq: "Multiple choice", short_answer: "Short answer" }[card.card_type] || card.card_type;
@@ -298,21 +321,7 @@ function CardPreview({ card }) {
               ))}
             </ul>
           )}
-          {card.evidence?.length > 0 && (
-            <div className="study-card-evidence">
-              {card.evidence.map((ev, i) => (
-                <a
-                  key={i}
-                  href={`${API}/sources/${ev.source_id}/open`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="study-evidence-ref"
-                >
-                  ↗ {ev.filename || ev.title}{ev.page != null ? `, p. ${ev.page}` : ""}
-                </a>
-              ))}
-            </div>
-          )}
+          {card.evidence?.length > 0 && <div className="study-card-evidence">{card.evidence.map((ev, i) => <StudyEvidenceLink key={i} evidence={ev} />)}</div>}
         </>
       )}
     </div>
@@ -393,21 +402,7 @@ function ReviewSession({ cards, index, flipped, onFlip, onRespond, answered, cor
                   ))}
                 </ul>
               )}
-              {card.evidence?.length > 0 && (
-                <div className="study-card-evidence review">
-                  {card.evidence.map((ev, i) => (
-                    <a
-                      key={i}
-                      href={`${API}/sources/${ev.source_id}/open`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="study-evidence-ref"
-                    >
-                      ↗ {ev.filename || ev.title}{ev.page != null ? `, p. ${ev.page}` : ""}
-                    </a>
-                  ))}
-                </div>
-              )}
+              {card.evidence?.length > 0 && <div className="study-card-evidence review">{card.evidence.map((ev, i) => <StudyEvidenceLink key={i} evidence={ev} />)}</div>}
               <div className="study-quality-row">
                 <span className="study-quality-label">How well did you recall this?</span>
                 <div className="study-quality-buttons">

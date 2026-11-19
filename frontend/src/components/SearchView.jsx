@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { API, deleteSource, localDate, request, revealSource } from "../api";
+import { API, deleteSource, localDate, request, revealSource, sourceNeedsFinder } from "../api";
 
 const SEARCH_MODES = ["keyword", "semantic", "visual", "hybrid", "hybrid_rerank"];
 
@@ -86,6 +86,12 @@ function SearchResult({ result, mode, index, onDeleted }) {
     }
   }
 
+  async function openResult(event) {
+    if (!sourceNeedsFinder(result.filename, result.source_type)) return;
+    event.preventDefault();
+    await reveal();
+  }
+
   async function removeSource(event) {
     event.preventDefault();
     event.stopPropagation();
@@ -115,7 +121,7 @@ function SearchResult({ result, mode, index, onDeleted }) {
   </>;
   const key = result.unit_id || result.source_id || index;
   return result.source_id
-    ? <div className="search-result-shell" key={key}><a className="search-result" href={result.capture_url || `${API}/sources/${result.source_id}/open${result.page && result.source_type === "pdf" ? `#page=${result.page}` : ""}`} target="_blank" rel="noreferrer">{content}</a>{visiblePassages.length > 0 && <div className="search-result-passages">{visiblePassages.map((passage, passageIndex) => <p key={`${passage.unit_id || "passage"}-${passageIndex}`}>{readableSnippet(passage.snippet, result.source_type)}{passage.page ? ` · Page ${passage.page}` : ""}</p>)}</div>}<div className="search-result-actions">{passages.length > 1 && <button type="button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show fewer passages" : `Show ${passages.length - 1} more passages`}</button>}{result.source_type !== "webpage" && <button type="button" onClick={reveal}>Reveal in Finder</button>}<button type="button" className="danger-icon" onClick={removeSource} aria-label={`Remove ${result.title || result.filename || "source"}`} title="Remove source">×</button>{revealMessage && <small>{revealMessage}</small>}</div></div>
+    ? <div className="search-result-shell" key={key}><a className="search-result" onClick={openResult} href={result.capture_url || `${API}/sources/${result.source_id}/open${result.page && result.source_type === "pdf" ? `#page=${result.page}` : ""}`} target="_blank" rel="noreferrer">{content}</a>{visiblePassages.length > 0 && <div className="search-result-passages">{visiblePassages.map((passage, passageIndex) => <p key={`${passage.unit_id || "passage"}-${passageIndex}`}>{readableSnippet(passage.snippet, result.source_type)}{passage.page ? ` · Page ${passage.page}` : ""}</p>)}</div>}<div className="search-result-actions">{passages.length > 1 && <button type="button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show fewer passages" : `Show ${passages.length - 1} more passages`}</button>}{result.source_type !== "webpage" && <button type="button" onClick={reveal}>Reveal in Finder</button>}<button type="button" className="danger-icon" onClick={removeSource} aria-label={`Remove ${result.title || result.filename || "source"}`} title="Remove source">×</button>{revealMessage && <small>{revealMessage}</small>}</div></div>
     : <article className="search-result" key={key}>{content}</article>;
 }
 

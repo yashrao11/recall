@@ -83,6 +83,13 @@ export async function revealSource(sourceId) {
   return request(`/sources/${sourceId}/reveal`, { method: "POST" });
 }
 
+export function sourceNeedsFinder(filename = "", sourceType = "") {
+  const extension = String(filename).split(".").pop()?.toLowerCase();
+  const nativeExtensions = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "key", "pages", "numbers"];
+  const nativeTypes = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "presentation", "spreadsheet", "word"];
+  return nativeExtensions.includes(extension) || nativeTypes.includes(String(sourceType).toLowerCase());
+}
+
 // --- Study Mode ---
 
 export async function generateStudySet({ sourceId = null, objectId = null } = {}) {

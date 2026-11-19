@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { API } from "../api";
+import { API, revealSource, sourceNeedsFinder } from "../api";
 
 function readableExcerpt(value) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
@@ -33,17 +33,30 @@ export default function EvidencePanel({ message }) {
 
 function EvidenceCard({ citation }) {
   const [expanded, setExpanded] = useState(false);
+  const [openMessage, setOpenMessage] = useState("");
   const image = citation.thumbnail_url ? `${API}${citation.thumbnail_url}` : null;
+  const revealInFinder = sourceNeedsFinder(citation.filename, citation.source_type);
   const sourceUrl = citation.source_url?.startsWith("http")
     ? citation.source_url
     : `${API}${citation.source_url || `/sources/${citation.source_id}/open`}${citation.page && citation.source_type === "pdf" ? `#page=${citation.page}` : ""}`;
   const passages = citation.passages || [];
   const visiblePassages = expanded ? passages : passages.slice(0, 1);
+  async function openSource(event) {
+    if (!revealInFinder) return;
+    event.preventDefault();
+    setOpenMessage("");
+    try {
+      await revealSource(citation.source_id);
+      setOpenMessage("Revealed in Finder");
+    } catch (error) {
+      setOpenMessage(error.message);
+    }
+  }
   return <article className="evidence-card">
     {image ? <img src={image} alt="" /> : <div className="evidence-placeholder">{fileIcon(citation.filename, citation.source_type)}</div>}
     <div className="evidence-card-body"><div className="evidence-ref">[{citation.references.join(", ")}] · {citation.source_type || "source"}</div><h3>{citation.title || "Untitled source"}</h3><small>{citation.filename}{citation.page ? ` · Page ${citation.page}` : ""}{passages.length > 1 ? ` · ${passages.length} passages` : ""}</small>
       {visiblePassages.map((passage, index) => <p className="evidence-excerpt" key={`${passage.unit_id || "passage"}-${index}`}>{readableExcerpt(passage.excerpt) || "Text preview unavailable."}{passage.page && passage.page !== citation.page ? ` · Page ${passage.page}` : ""}</p>)}
-      <div className="evidence-card-actions"><a className="open-source" href={sourceUrl} target="_blank" rel="noreferrer">Open source ↗</a>{passages.length > 1 && <button type="button" className="text-button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : `Show ${passages.length - 1} more`}</button>}</div>
+      <div className="evidence-card-actions">{revealInFinder ? <button type="button" className="open-source" onClick={openSource}>Reveal in Finder ↗</button> : <a className="open-source" href={sourceUrl} target="_blank" rel="noreferrer">Open source ↗</a>}{passages.length > 1 && <button type="button" className="text-button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : `Show ${passages.length - 1} more`}</button>}{openMessage && <small>{openMessage}</small>}</div>
     </div>
   </article>;
 }
