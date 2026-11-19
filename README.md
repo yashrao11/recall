@@ -291,9 +291,9 @@ video understanding.
 erDiagram
   SOURCES ||--o{ DOCUMENT_UNITS : contains
   SOURCES ||--o{ MEMORY_EVENTS : records
-  SOURCES ||--o{ RELATIONSHIPS : evidences
-  OBJECTS ||--o{ RELATIONSHIPS : from
-  OBJECTS ||--o{ RELATIONSHIPS : to
+  SOURCES ||--o{ RELATIONSHIPS : supports
+  OBJECTS ||--o{ RELATIONSHIPS : origin
+  OBJECTS ||--o{ RELATIONSHIPS : target
   OBJECTS ||--o{ STUDY_SESSIONS : studied_in
 
   SOURCES {
