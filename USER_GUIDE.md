@@ -191,6 +191,24 @@ Use Search when you remember words, a topic, or a visual description.
 5. Select a result to open the protected source-file endpoint. Results show the filename and page
    where available.
 
+Search also supports an **Added** date selector:
+
+- **All dates** searches the complete indexed collection.
+- **Today** searches sources imported today.
+- **Custom range** searches between the selected dates.
+
+Search results represent original sources rather than every matching chunk. Expand additional
+passages when a file has multiple matches. For a public webpage capture, opening the result uses
+the original captured URL. For local files, the protected source endpoint opens the mounted file.
+
+Use the `×` control on a source result to remove that source from Recall. Recall asks for
+confirmation, then removes its indexed data, embeddings, thumbnails, calendar events and automatic
+connection evidence. It does not delete the original file from your folder.
+
+The **Indexing** card in the sidebar can be expanded to inspect every source, its type, status and
+the first warning/error. `ready` means all configured operations completed; `partial` means the
+core content is searchable while an optional operation such as OCR or embeddings is unavailable.
+
 With cloud AI disabled and no local BGE installation, semantic and visual modes accurately report
 that their provider is unavailable; they do not pretend that keyword results are semantic results.
 

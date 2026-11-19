@@ -424,6 +424,34 @@ then search.
 | `ALLOW_CLOUD_AI` | `false` by default; must be enabled to send content to a cloud LLM |
 | `VISUAL_MODEL` | `colqwen2`, `colpali` or `siglip` |
 
+### Search date filters and source cleanup
+
+Search supports three date scopes from the Search workspace:
+
+- **All dates** searches the complete indexed database.
+- **Today** searches sources added today.
+- **Custom range** searches an inclusive calendar range using the source import date.
+
+Each source-level result has a `×` removal control. After confirmation, `DELETE /sources/{id}`
+removes the source record, extracted units, FTS rows, embeddings, thumbnails, calendar events and
+automatic connection evidence. The original file in a mounted folder is never deleted.
+
+The Indexing card in the sidebar expands to show every registered source, its file type, current
+status, and the first persisted warning or error. `partial` means searchable core content exists
+but an optional operation (for example embeddings or OCR) is incomplete; it is not a failed file.
+
+### Deployment files
+
+The root [requirements.txt](./requirements.txt) contains the runtime, ingestion, Gemini and test
+Python dependencies. For development, the equivalent editable install is:
+
+```bash
+python -m pip install -e ".[dev,ingestion,ai]"
+```
+
+The frontend is built separately with `npm install` and `npm run build` from `frontend/`. Keep
+`.env` outside version control and set `DATA_DIR` to a persistent writable directory when deploying.
+
 ## 10. API overview
 
 | Method | Endpoint | Purpose |
@@ -434,10 +462,10 @@ then search.
 | GET | `/conversations/{id}` | Read a conversation and its messages |
 | GET | `/conversations/{id}/messages` | Paginate conversation messages |
 | DELETE | `/conversations/{id}` | Delete a local conversation |
-| DELETE | `/sources/{id}` | Remove a source and its derived data |
+| DELETE | `/sources/{id}` | Remove indexed source data without deleting the original mounted file |
 | POST | `/index/pause` / `/index/resume` | Control background indexing |
 | GET | `/index/status` | Indexing progress and errors |
-| GET | `/search?q=...&filters=...` | Hybrid search |
+| GET | `/search?q=...&mode=...&from_date=...&to_date=...` | Search with optional import-date bounds |
 | GET | `/units/{id}` | Page, slide or chunk with source info |
 | GET | `/calendar?view=month&date=...` | Memory events grouped by date |
 | GET | `/graph` | Objects and relationships |

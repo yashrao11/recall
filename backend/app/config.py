@@ -63,7 +63,12 @@ class Settings:
 def get_settings() -> Settings:
     load_project_environment()
     raw_origins = os.getenv("CORS_ORIGINS")
-    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()] if raw_origins else ["http://localhost:5173", "http://127.0.0.1:5173"]
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()] if raw_origins else []
+    for port in (5173, 5174, 5175):
+        for host in ("localhost", "127.0.0.1"):
+            origin = f"http://{host}:{port}"
+            if origin not in origins:
+                origins.append(origin)
     return Settings(
         app_name=os.getenv("APP_NAME", "Recall"),
         environment=os.getenv("ENVIRONMENT", "development"),

@@ -54,7 +54,7 @@ def keyword_search(
 
     rows = connection.execute(
         "SELECT u.unit_id, u.source_id, u.page_or_slide, u.short_comment, u.tags_json, "
-        "s.title, s.source_type, s.original_path, u.thumbnail_path, "
+        "s.title, s.source_type, s.original_path, s.capture_url, u.thumbnail_path, "
         "snippet(fts_units, 2, '<mark>', '</mark>', '…', 18) AS snippet, "
         "bm25(fts_units, 1.0, 1.0, 0.4, 0.3) AS raw_score "
         "FROM fts_units JOIN document_units u ON u.unit_id = fts_units.unit_id "
@@ -76,7 +76,7 @@ def keyword_search(
             metadata_params.extend([f"%{token.lower()}%", f"%{token.lower()}%"])
         metadata_rows = connection.execute(
             "SELECT u.unit_id, u.source_id, u.page_or_slide, u.short_comment, u.tags_json, "
-            "s.title, s.source_type, s.original_path, u.thumbnail_path, "
+            "s.title, s.source_type, s.original_path, s.capture_url, u.thumbnail_path, "
             "'' AS snippet, 0.0 AS raw_score "
             "FROM document_units u JOIN sources s ON s.source_id = u.source_id "
             f"WHERE {' AND '.join(metadata_clauses)} ORDER BY s.imported_at DESC, u.unit_id LIMIT ?",
@@ -104,6 +104,7 @@ def _result(row: dict, match_type: str, score: float) -> dict:
         "title": row["title"],
         "source_type": row["source_type"],
         "filename": Path(row["original_path"]).name if row.get("original_path") else None,
+        "capture_url": row.get("capture_url"),
         "page": row["page_or_slide"],
         "snippet": row.get("snippet") or row.get("short_comment", ""),
         "short_comment": row.get("short_comment", ""),

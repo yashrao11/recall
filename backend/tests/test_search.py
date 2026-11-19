@@ -73,3 +73,13 @@ def test_source_file_and_delete_remove_indexed_content(tmp_path: Path) -> None:
         assert client.delete(f"/sources/{source_id}").status_code == 204
         assert client.get("/search", params={"q": "attention", "mode": "keyword"}).json()["total"] == 0
 
+
+def test_keyword_search_respects_import_date_range(tmp_path: Path) -> None:
+    app, _, _ = build_indexed_app(tmp_path)
+    with get_connection(app.state.settings.database_path) as connection:
+        connection.execute("UPDATE sources SET imported_at = '2024-01-15T10:00:00+00:00'")
+    with TestClient(app) as client:
+        response = client.get("/search", params={"q": "attention", "mode": "keyword", "from_date": "2025-01-01"})
+    assert response.status_code == 200
+    assert response.json()["results"] == []
+

@@ -2,10 +2,15 @@ export const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export async function request(path, options = {}) {
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-  const response = await fetch(`${API}${path}`, {
-    headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${API}${path}`, {
+      headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
+      ...options,
+    });
+  } catch (error) {
+    throw new Error(`Cannot reach the Recall API at ${API}. Start the backend and try again.`);
+  }
   const payload = response.status === 204 ? null : await response.json();
   if (!response.ok) throw new Error(payload?.detail || payload?.error || "Request failed");
   return payload;
@@ -68,6 +73,10 @@ export async function captureFiles(files) {
 
 export async function retryCapture(sourceId) {
   return request(`/capture/${sourceId}/retry`, { method: "POST" });
+}
+
+export async function deleteSource(sourceId) {
+  return request(`/sources/${sourceId}`, { method: "DELETE" });
 }
 
 export async function revealSource(sourceId) {

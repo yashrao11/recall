@@ -182,6 +182,17 @@ def delete_source(source_id: int, request: Request) -> None:
         ]
         connection.execute("DELETE FROM fts_units WHERE source_id = ?", (source_id,))
         connection.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+        # Explicit source removal also removes automatic graph derivatives that
+        # no longer have any evidence. Manual entities/relationships survive.
+        connection.execute(
+            "DELETE FROM relationships WHERE created_by IN ('system', 'llm') "
+            "AND NOT EXISTS (SELECT 1 FROM relationship_evidence e WHERE e.relationship_id = relationships.relationship_id)"
+        )
+        connection.execute(
+            "DELETE FROM objects WHERE created_by IN ('system', 'llm') "
+            "AND NOT EXISTS (SELECT 1 FROM object_evidence e WHERE e.object_id = objects.object_id) "
+            "AND NOT EXISTS (SELECT 1 FROM relationships r WHERE r.from_object_id = objects.object_id OR r.to_object_id = objects.object_id)"
+        )
         reconcile_automatic_knowledge(connection)
     try:
         text_store = FaissVectorStore(settings.data_dir / "text.index", settings.embedding_dimension)

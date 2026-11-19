@@ -35,7 +35,7 @@ def vector_search(
     placeholders = ",".join("?" for _ in ids)
     rows = connection.execute(
         "SELECT u.unit_id, u.source_id, u.page_or_slide, u.extracted_text, u.short_comment, u.tags_json, "
-        "s.title, s.source_type, s.original_path, u.thumbnail_path "
+        "s.title, s.source_type, s.original_path, s.capture_url, u.thumbnail_path "
         f"FROM document_units u JOIN sources s ON s.source_id = u.source_id "
         f"WHERE s.indexing_status IN ('done', 'partial') AND s.excluded = 0 "
         f"AND u.unit_id IN ({placeholders})",
