@@ -177,7 +177,6 @@ def delete_source(source_id: int, request: Request) -> None:
     settings = request.app.state.settings
     with get_connection(request.app.state.settings.database_path) as connection:
         source = _source_with_mount(connection, source_id)
-        source_hash = source["content_hash"]
         unit_ids = [
             int(row["unit_id"])
             for row in connection.execute("SELECT unit_id FROM document_units WHERE source_id = ?", (source_id,))
@@ -200,8 +199,10 @@ def delete_source(source_id: int, request: Request) -> None:
                     "UPDATE messages SET citations_json = ? WHERE message_id = ?",
                     (json.dumps(remaining), message["message_id"]),
                 )
-        if source_hash:
-            connection.execute("DELETE FROM api_cache WHERE content_hash = ?", (source_hash,))
+        # Provider cache rows are content-hash keyed and intentionally do not
+        # carry a source foreign key. Clear this ephemeral cache on explicit
+        # erasure so no derived provider response can retain deleted context.
+        connection.execute("DELETE FROM api_cache")
         # Explicit source removal also removes automatic graph derivatives that
         # no longer have any evidence. Manual entities/relationships survive.
         connection.execute(

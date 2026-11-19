@@ -149,6 +149,10 @@ def test_source_delete_removes_cascades_vectors_thumbnails_and_records(tmp_path:
     index_source(source_id, settings, FakeEmbeddingProvider(), FakeMetadataProvider())
     with get_connection(settings.database_path) as connection:
         connection.execute(
+            "INSERT INTO api_cache(cache_key, content_hash, provider, operation, response_json) "
+            "VALUES ('delete-check', 'old-hash', 'fake', 'test', '{}')"
+        )
+        connection.execute(
             "INSERT INTO memory_events(event_type, source_id, date_basis) VALUES ('capture', ?, 'created_at')",
             (source_id,),
         )
@@ -166,6 +170,7 @@ def test_source_delete_removes_cascades_vectors_thumbnails_and_records(tmp_path:
         assert connection.execute("SELECT COUNT(*) FROM document_units WHERE unit_id = ?", (unit_id,)).fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM fts_units WHERE source_id = ?", (source_id,)).fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM memory_events WHERE source_id = ?", (source_id,)).fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM api_cache").fetchone()[0] == 0
     assert not thumbnail_dir.exists()
     assert FaissVectorStore(settings.data_dir / "text.index", 3).search([1.0, 0.0, 0.0]) == []
     assert FaissVectorStore(settings.data_dir / "visual.index", 3).search([0.0, 0.0, 1.0]) == []
