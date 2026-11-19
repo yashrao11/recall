@@ -14,6 +14,21 @@ from app.main import create_app
 from app.study.service import generate_study_set, list_due_cards, respond_to_card, complete_session
 
 
+class FakeStudyProvider:
+    name = "fake-study"
+    model = "synthetic"
+
+    def __init__(self, payload: dict):
+        self.payload = payload
+        self.calls = 0
+
+    def generate(self, prompt, content_hash, connection, *, system_instruction=None):
+        self.calls += 1
+        assert "Retrieved" not in prompt  # Study prompt uses its own evidence heading.
+        assert system_instruction and "source_refs" in system_instruction
+        return json.dumps(self.payload)
+
+
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 def _synthetic_db(path: Path) -> None:
@@ -128,6 +143,44 @@ def test_generate_study_set_requires_exactly_one_target(tmp_path: Path) -> None:
         generate_study_set(settings, source_id=1, object_id=1)
     with pytest.raises(ValueError):
         generate_study_set(settings)
+
+
+def test_generate_study_set_validates_citations_and_persists_mcq_explanation(tmp_path: Path) -> None:
+    database = tmp_path / "data" / "recall.sqlite3"
+    _synthetic_db(database)
+    settings = Settings(data_dir=tmp_path / "data", allow_cloud_ai=True)
+    with connect(database) as conn:
+        source_id = conn.execute("SELECT source_id FROM sources").fetchone()[0]
+    provider = FakeStudyProvider({
+        "flashcards": [{"front": "What trains the model?", "back": "Backpropagation", "source_refs": [1]}],
+        "mcqs": [{"question": "How many options?", "options": ["1", "2", "3", "4"], "answer": "4", "explanation": "The question defines four options.", "source_refs": [2]}],
+        "short_answers": [{"question": "Unsupported", "answer": "No", "source_refs": [99]}],
+    })
+    result = generate_study_set(settings, source_id=source_id, generation_provider=provider)
+    assert result["status"] == "ready"
+    assert len(result["cards"]) == 2
+    mcq = next(card for card in result["cards"] if card["card_type"] == "mcq")
+    assert mcq["options"] == ["1", "2", "3", "4"]
+    assert mcq["explanation"] == "The question defines four options."
+    assert all(card["evidence"] for card in result["cards"])
+    assert provider.calls == 1
+
+
+def test_generate_study_set_supports_entity_evidence(tmp_path: Path) -> None:
+    database = tmp_path / "data" / "recall.sqlite3"
+    _synthetic_db(database)
+    settings = Settings(data_dir=tmp_path / "data", allow_cloud_ai=True)
+    with connect(database) as conn:
+        source_id = conn.execute("SELECT source_id FROM sources").fetchone()[0]
+        unit_id = conn.execute("SELECT unit_id FROM document_units ORDER BY unit_id LIMIT 1").fetchone()[0]
+        conn.execute("INSERT INTO objects(object_type, title, normalized_title, created_by, discovery_method) VALUES ('topic', 'Neural networks', 'neural networks', 'system', 'lexical')")
+        object_id = conn.execute("SELECT object_id FROM objects").fetchone()[0]
+        conn.execute("INSERT INTO object_evidence(object_id, source_id, unit_id, discovery_method) VALUES (?, ?, ?, 'lexical')", (object_id, source_id, unit_id))
+        conn.commit()
+    provider = FakeStudyProvider({"flashcards": [{"front": "Q", "back": "A", "source_refs": [1]}], "mcqs": [], "short_answers": []})
+    result = generate_study_set(settings, object_id=object_id, generation_provider=provider)
+    assert result["status"] == "ready"
+    assert result["title"] == "Neural networks"
 
 
 def test_list_due_cards_empty_on_fresh_db(tmp_path: Path) -> None:

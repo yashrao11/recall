@@ -69,7 +69,7 @@ def generate_study_set(
                 "INSERT INTO flashcards(source_id, unit_id, card_type, front, back, options_json, next_review) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (ref["source_id"], ref["unit_id"], item["card_type"], item["front"], item["back"],
-                 json.dumps(item.get("options")) if item.get("options") is not None else None,
+                 json.dumps(_stored_options(item)) if item.get("options") is not None else None,
                  datetime.now(UTC).isoformat()),
             )
             saved.append(_card_payload(connection, int(cursor.lastrowid), item, refs, evidence))
@@ -172,7 +172,10 @@ def _build_evidence(rows, max_chars):
         block = f"[{item['reference']}] {item['title']} ({item['filename']})" + (f", page {item['page']}" if item["page"] is not None else "") + f"\nExcerpt: {excerpt}\n"
         if blocks and used + len(block) > max_chars:
             break
-        blocks.append(block[:max_chars] if not blocks else block)
+        if not blocks and len(block) > max_chars:
+            prefix = block.split("Excerpt: ", 1)[0] + "Excerpt: "
+            item["excerpt"] = excerpt[:max(0, max_chars - len(prefix) - 1)]
+            block = prefix + item["excerpt"] + "\n"
         evidence.append(item)
         used += len(block)
     return "\n".join(blocks), evidence
@@ -200,7 +203,21 @@ def _card(raw, kind, valid_refs):
     back = str(raw.get("back") or raw.get("answer") or "").strip()
     if not front or not back:
         return None
-    return {"card_type": kind, "front": front, "back": back, "options": raw.get("options"), "explanation": raw.get("explanation"), "source_refs": list(dict.fromkeys(refs))}
+    options = raw.get("options")
+    if kind == "mcq":
+        if not isinstance(options, list) or len(options) != 4 or any(not str(option).strip() for option in options):
+            return None
+        if back not in [str(option) for option in options]:
+            return None
+    explanation = str(raw.get("explanation") or "").strip() or None
+    return {"card_type": kind, "front": front, "back": back, "options": options,
+            "explanation": explanation, "source_refs": list(dict.fromkeys(refs))}
+
+
+def _stored_options(item):
+    if item.get("card_type") == "mcq":
+        return {"options": item.get("options") or [], "explanation": item.get("explanation")}
+    return item.get("options")
 
 
 def _card_payload(connection, card_id, item, refs, evidence):
@@ -218,8 +235,13 @@ def _card_payload_from_row(connection, card_id):
     evidence = [{"source_id": row["source_id"], "unit_id": row["unit_id"], "title": row["title"],
                  "filename": Path(row["original_path"]).name if row["original_path"] else None,
                  "page": row["page_or_slide"], "excerpt": _excerpt(row["extracted_text"] or ""), "source_type": row["source_type"]}]
+    stored = json.loads(row["options_json"]) if row["options_json"] else None
+    if isinstance(stored, dict):
+        options, explanation = stored.get("options"), stored.get("explanation")
+    else:
+        options, explanation = stored, None
     return {"card_id": row["card_id"], "card_type": row["card_type"], "front": row["front"], "back": row["back"],
-            "options": json.loads(row["options_json"]) if row["options_json"] else None, "next_review": row["next_review"], "evidence": evidence}
+            "options": options, "explanation": explanation, "next_review": row["next_review"], "evidence": evidence}
 
 
 def _validate_scope(connection, source_id, object_id):

@@ -3,6 +3,7 @@ import {
   API,
   completeStudySession,
   fetchDueCards,
+  fetchEntities,
   generateStudySet,
   respondToCard,
 } from "../api";
@@ -20,6 +21,8 @@ const QUALITY_LABELS = [
 export default function StudyView({ sources = [] }) {
   const [mode, setMode] = useState("home"); // home | generate | review
   const [sourceId, setSourceId] = useState("");
+  const [objectId, setObjectId] = useState("");
+  const [entities, setEntities] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [cards, setCards] = useState([]);
   const [evidence, setEvidence] = useState([]);
@@ -46,6 +49,10 @@ export default function StudyView({ sources = [] }) {
     }
   }, [mode]);
 
+  useEffect(() => {
+    fetchEntities({ limit: 100 }).then((payload) => setEntities(payload.entities || [])).catch(() => setEntities([]));
+  }, []);
+
   async function loadDueCards() {
     setDueLoading(true);
     try {
@@ -65,7 +72,10 @@ export default function StudyView({ sources = [] }) {
     setError("");
     setStatusMessage(null);
     try {
-      const payload = await generateStudySet({ sourceId: parseInt(sourceId, 10) });
+      const payload = await generateStudySet({
+        sourceId: sourceId ? parseInt(sourceId, 10) : null,
+        objectId: objectId ? parseInt(objectId, 10) : null,
+      });
       if (payload.status === "ready") {
         setCards(payload.cards || []);
         setEvidence(payload.evidence || []);
@@ -116,6 +126,8 @@ export default function StudyView({ sources = [] }) {
       let result = null;
       try {
         result = await completeStudySession({
+          sourceId: sourceId ? parseInt(sourceId, 10) : null,
+          objectId: objectId ? parseInt(objectId, 10) : null,
           startedAt: startedAt.current,
           completedAt,
           questionsAttempted: nextAnswered,
@@ -179,7 +191,7 @@ export default function StudyView({ sources = [] }) {
           <form className="study-form" onSubmit={handleGenerate}>
             <label>
               Source
-              <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} required>
+              <select value={sourceId} onChange={(e) => { setSourceId(e.target.value); setObjectId(""); }} disabled={Boolean(objectId)}>
                 <option value="">Select a source…</option>
                 {sources
                   .filter((s) => s.indexing_status === "done")
@@ -190,7 +202,15 @@ export default function StudyView({ sources = [] }) {
                   ))}
               </select>
             </label>
-            <button className="primary-button study-generate-btn" disabled={generating || !sourceId}>
+            <div className="study-or-divider"><span>or study a topic</span></div>
+            <label>
+              Topic or entity
+              <select value={objectId} onChange={(e) => { setObjectId(e.target.value); setSourceId(""); }} disabled={Boolean(sourceId)}>
+                <option value="">Select an indexed topic…</option>
+                {entities.map((entity) => <option key={entity.object_id} value={entity.object_id}>{entity.title} · {entity.object_type}</option>)}
+              </select>
+            </label>
+            <button className="primary-button study-generate-btn" disabled={generating || (!sourceId && !objectId)}>
               {generating ? "Generating…" : "Generate study set"}
             </button>
           </form>
@@ -269,6 +289,7 @@ function CardPreview({ card }) {
       {open && (
         <>
           <p className="study-card-back">{card.back}</p>
+          {card.explanation && <p className="study-card-explanation"><strong>Why:</strong> {card.explanation}</p>}
           {card.options && (
             <ul className="study-card-options">
               {card.options.map((opt, i) => (
@@ -363,6 +384,7 @@ function ReviewSession({ cards, index, flipped, onFlip, onRespond, answered, cor
             <div className="study-flashcard-back">
               <span className="study-card-type-label eyebrow">Answer</span>
               <p>{card.back}</p>
+              {card.explanation && <p className="study-card-explanation"><strong>Why:</strong> {card.explanation}</p>}
               {card.options && (
                 <ul className="study-card-options review">
                   {card.options.map((opt, i) => (
