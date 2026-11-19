@@ -89,7 +89,7 @@ def test_question_returns_verified_source_and_page_citation(tmp_path: Path, monk
     assert result["citations"][0]["source_id"] == source_ids[0]
     assert result["citations"][0]["unit_id"] == unit_id
     assert result["citations"][0]["page"] == 7
-    assert result["citations"][0]["source_url"] == f"/sources/{source_ids[0]}/file"
+    assert result["citations"][0]["source_url"] == f"/sources/{source_ids[0]}/open"
     assert "Residual connections" in generation.prompts[0]
 
 

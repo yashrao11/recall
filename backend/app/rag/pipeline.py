@@ -179,7 +179,7 @@ def _build_context(evidence: list[dict], max_chars: int) -> tuple[str, list[dict
                 }
                 for item in source_evidence
             ],
-            "source_url": result.get("capture_url") or f"/sources/{int(result['source_id'])}/file",
+            "source_url": result.get("capture_url") or f"/sources/{int(result['source_id'])}/open",
             "thumbnail_url": result.get("thumbnail_url"),
         }
         block = (

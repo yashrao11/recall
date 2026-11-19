@@ -53,5 +53,8 @@ function fileIcon(filename = "", sourceType = "") {
   if (extension === "pdf" || sourceType === "pdf") return "PDF";
   if (["jpg", "jpeg", "png", "webp"].includes(extension) || sourceType === "image") return "IMG";
   if (extension === "docx") return "DOC";
+  if (extension === "pptx" || sourceType === "pptx") return "PPT";
+  if (extension === "md" || sourceType === "markdown") return "MD";
+  if (extension === "txt" || sourceType === "text") return "TXT";
   return "TXT";
 }
