@@ -5,10 +5,11 @@ import hashlib
 import inspect
 import json
 from pathlib import Path
+import re
 import sqlite3
 
 from app.ai.generation import GenerationProvider, build_generation_provider
-from app.ai.providers import CloudAIDisabled, ProviderUnavailable
+from app.ai.providers import ProviderUnavailable
 from app.ai.study_generator import (
     STUDY_SYSTEM_INSTRUCTION,
     parse_study_generation,
@@ -39,28 +40,46 @@ def generate_study_set(
         if not context_rows:
             return {"status": "insufficient_evidence", "cards": [], "evidence": []}
         context, evidence = _build_evidence(context_rows, max_context_chars)
-        if generation_provider is None:
+        local_message = None
+        cloud_provider_injection = (
+            generation_provider is not None
+            and str(getattr(generation_provider, "name", "")).lower() == "gemini"
+        )
+        if not settings.allow_cloud_ai and (generation_provider is None or cloud_provider_injection):
+            # Keep the execution boundary safe even if an internal caller passes
+            # a Gemini-shaped provider directly while cloud AI is disabled.
+            generation_provider = None
+            cards = _local_extractive_cards(evidence)
+            local_message = (
+                "Cloud AI is disabled. Recall created an extractive study set locally "
+                "from the indexed evidence."
+            )
+        elif generation_provider is None:
             try:
                 generation_provider = build_generation_provider(settings)
-            except CloudAIDisabled as exc:
-                return {"status": "cloud_disabled", "message": str(exc), "cards": [], "evidence": evidence}
             except ProviderUnavailable as exc:
                 return {"status": "provider_unavailable", "message": str(exc), "cards": [], "evidence": evidence}
-        prompt = study_prompt(context, title)
-        content_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        try:
-            raw = _invoke_generation(generation_provider, prompt, content_hash, connection)
-            payload = parse_study_generation(raw)
-            cards = _validated_cards(payload, evidence)
-        except Exception as exc:  # provider and malformed-output boundary
+        if generation_provider is not None:
+            prompt = study_prompt(context, title)
+            content_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+            try:
+                raw = _invoke_generation(generation_provider, prompt, content_hash, connection)
+                payload = parse_study_generation(raw)
+                cards = _validated_cards(payload, evidence)
+            except Exception as exc:  # provider and malformed-output boundary
+                return {
+                    "status": "provider_error",
+                    "message": f"Study generation failed: {type(exc).__name__}",
+                    "cards": [],
+                    "evidence": evidence,
+                }
+        if not cards:
             return {
-                "status": "provider_error",
-                "message": f"Study generation failed: {type(exc).__name__}",
+                "status": "insufficient_evidence",
+                "message": "The indexed text is not substantial enough to create reliable study cards.",
                 "cards": [],
                 "evidence": evidence,
             }
-        if not cards:
-            return {"status": "insufficient_evidence", "cards": [], "evidence": evidence}
         saved = []
         for item in cards:
             refs = item.pop("source_refs")
@@ -73,7 +92,10 @@ def generate_study_set(
                  datetime.now(UTC).isoformat()),
             )
             saved.append(_card_payload(connection, int(cursor.lastrowid), item, refs, evidence))
-        return {"status": "ready", "cards": saved, "evidence": evidence, "title": title}
+        result = {"status": "ready", "cards": saved, "evidence": evidence, "title": title}
+        if local_message:
+            result["message"] = local_message
+        return result
 
 
 def list_due_cards(settings: Settings, limit: int = 20) -> dict:
@@ -192,6 +214,60 @@ def _validated_cards(payload, evidence):
     for raw in payload.get("short_answers", []) if isinstance(payload.get("short_answers", []), list) else []:
         cards.append(_card(raw, "short_answer", valid_refs))
     return [card for card in cards if card is not None]
+
+
+_LOCAL_STOPWORDS = {
+    "about", "after", "again", "also", "because", "before", "being", "between",
+    "could", "every", "from", "have", "into", "itself", "more", "other", "over",
+    "should", "such", "than", "that", "their", "there", "these", "they", "this",
+    "those", "through", "under", "using", "which", "while", "with", "would",
+}
+
+
+def _local_extractive_cards(evidence: list[dict], limit: int = 10) -> list[dict]:
+    """Create conservative cards without a model, using only indexed evidence.
+
+    The answer is always a verbatim token from the supplied excerpt. Short or
+    unstructured excerpts are rejected instead of being padded with guesses.
+    """
+    cards: list[dict] = []
+    seen_units: set[int] = set()
+    for item in evidence:
+        unit_id = int(item["unit_id"])
+        if unit_id in seen_units:
+            continue
+        seen_units.add(unit_id)
+        excerpt = " ".join(str(item.get("excerpt") or "").split())
+        sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", excerpt) if part.strip()]
+        if not sentences and excerpt:
+            sentences = [excerpt]
+        for sentence in sentences:
+            words = re.findall(r"[A-Za-z][A-Za-z0-9-]{4,}", sentence)
+            if len(sentence.split()) < 8:
+                continue
+            candidates = [
+                word for word in words
+                if word.casefold() not in _LOCAL_STOPWORDS and not word.isdigit()
+            ]
+            if not candidates:
+                continue
+            answer = max(candidates, key=lambda value: (len(value), value.casefold()))
+            cloze = re.sub(rf"\b{re.escape(answer)}\b", "_____", sentence, count=1)
+            if cloze == sentence:
+                continue
+            reference = int(item["reference"])
+            cards.append({
+                "card_type": "flashcard",
+                "front": f"Complete the statement from {item['title']}: {cloze}",
+                "back": answer,
+                "options": None,
+                "explanation": "The answer is taken directly from the indexed excerpt.",
+                "source_refs": [reference],
+            })
+            if len(cards) >= limit:
+                return cards
+            break
+    return cards
 
 
 def _card(raw, kind, valid_refs):

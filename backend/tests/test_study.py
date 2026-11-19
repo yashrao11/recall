@@ -119,16 +119,38 @@ def test_parse_study_generation_rejects_non_object() -> None:
 
 # ── Service layer tests (no AI — cloud disabled) ────────────────────────────
 
-def test_generate_study_set_cloud_disabled(tmp_path: Path) -> None:
+def test_generate_study_set_cloud_disabled_uses_local_extractive_fallback(tmp_path: Path, monkeypatch) -> None:
     _synthetic_db(tmp_path / "data" / "recall.sqlite3")
     settings = Settings(data_dir=tmp_path / "data", allow_cloud_ai=False)
+    monkeypatch.setattr(
+        "app.study.service.build_generation_provider",
+        lambda _settings: pytest.fail("cloud generation provider must not be constructed"),
+    )
     # get the source_id
     with connect(settings.database_path) as conn:
         source_id = conn.execute("SELECT source_id FROM sources").fetchone()[0]
     result = generate_study_set(settings, source_id=source_id)
-    assert result["status"] == "cloud_disabled"
-    assert "cards" in result
+    assert result["status"] == "ready"
+    assert result["message"].startswith("Cloud AI is disabled")
+    assert result["cards"]
     assert "evidence" in result
+    for card in result["cards"]:
+        assert card["evidence"]
+        assert card["evidence"][0]["source_id"] == source_id
+        assert card["evidence"][0]["page"] in {1, 2}
+
+
+def test_local_extractive_fallback_rejects_weak_evidence(tmp_path: Path) -> None:
+    database = tmp_path / "data" / "recall.sqlite3"
+    _synthetic_db(database)
+    settings = Settings(data_dir=tmp_path / "data", allow_cloud_ai=False)
+    with connect(database) as conn:
+        conn.execute("UPDATE document_units SET extracted_text = 'Too short.'")
+        conn.commit()
+        source_id = conn.execute("SELECT source_id FROM sources").fetchone()[0]
+    result = generate_study_set(settings, source_id=source_id)
+    assert result["status"] == "insufficient_evidence"
+    assert result["cards"] == []
 
 
 def test_generate_study_set_source_not_found(tmp_path: Path) -> None:
@@ -345,7 +367,9 @@ def test_study_generate_returns_cloud_disabled_for_local_only_source(tmp_path: P
         response = client.post("/study/generate", json={"source_id": source_id})
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] in {"cloud_disabled", "provider_unavailable", "insufficient_evidence"}
+        assert data["status"] in {"ready", "insufficient_evidence"}
+        if data["status"] == "ready":
+            assert data["message"].startswith("Cloud AI is disabled")
         assert isinstance(data["cards"], list)
 
 

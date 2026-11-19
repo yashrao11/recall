@@ -67,7 +67,7 @@ export default function StudyView({ sources = [] }) {
 
   async function handleGenerate(event) {
     event.preventDefault();
-    if (!sourceId) return;
+    if (!sourceId && !objectId) return;
     setGenerating(true);
     setError("");
     setStatusMessage(null);
@@ -80,6 +80,7 @@ export default function StudyView({ sources = [] }) {
         setCards(payload.cards || []);
         setEvidence(payload.evidence || []);
         setTitle(payload.title || "Study set");
+        setStatusMessage(payload.message ? { kind: "local", text: payload.message } : null);
         setMode("generate");
       } else if (payload.status === "cloud_disabled") {
         setStatusMessage({ kind: "cloud_disabled", text: "Cloud AI is disabled. Enable cloud AI in settings to generate study material from your documents." });
@@ -194,10 +195,10 @@ export default function StudyView({ sources = [] }) {
               <select value={sourceId} onChange={(e) => { setSourceId(e.target.value); setObjectId(""); }} disabled={Boolean(objectId)}>
                 <option value="">Select a source…</option>
                 {sources
-                  .filter((s) => s.indexing_status === "done")
+                  .filter((s) => ["done", "partial"].includes(s.indexing_status))
                   .map((s) => (
                     <option key={s.source_id} value={s.source_id}>
-                      {s.title || s.filename || "Untitled source"}
+                      {s.title || s.filename || "Untitled source"}{s.indexing_status === "partial" ? " · partial" : ""}
                     </option>
                   ))}
               </select>
@@ -215,7 +216,7 @@ export default function StudyView({ sources = [] }) {
             </button>
           </form>
           {statusMessage && (
-            <div className={`study-notice ${statusMessage.kind === "cloud_disabled" ? "study-cloud-disabled" : statusMessage.kind === "insufficient" ? "study-insufficient" : "study-error"}`}>
+            <div className={`study-notice ${statusMessage.kind === "cloud_disabled" ? "study-cloud-disabled" : statusMessage.kind === "insufficient" ? "study-insufficient" : statusMessage.kind === "local" ? "study-local" : "study-error"}`}>
               {statusMessage.text}
             </div>
           )}

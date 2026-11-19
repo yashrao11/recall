@@ -12,21 +12,22 @@ describe("StudyView", () => {
     vi.restoreAllMocks();
   });
 
-  it("offers source and topic targets and reports cloud-disabled generation", async () => {
+  it("offers partial sources and reports local cloud-disabled generation", async () => {
     const fetchMock = vi.fn(async (url) => {
       const path = new URL(String(url), "http://localhost").pathname;
       if (path === "/study/due") return response({ cards: [], total: 0, limit: 30 });
       if (path === "/connections/entities") return response({ entities: [{ object_id: 8, title: "Neural networks", object_type: "topic" }] });
-      if (path === "/study/generate") return response({ status: "cloud_disabled", message: "Cloud AI is disabled", cards: [], evidence: [] });
+      if (path === "/study/generate") return response({ status: "ready", message: "Cloud AI is disabled. Recall created an extractive study set locally from the indexed evidence.", title: "Notes", cards: [{ card_id: 1, card_type: "flashcard", front: "Complete the statement", back: "indexed" }], evidence: [] });
       return response({});
     });
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
-    render(<StudyView sources={[{ source_id: 3, title: "Notes", indexing_status: "done" }]} />);
+    render(<StudyView sources={[{ source_id: 3, title: "Notes", indexing_status: "partial" }]} />);
     expect(await screen.findByRole("option", { name: /Neural networks/ })).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Source"), "3");
     await user.click(screen.getByRole("button", { name: "Generate study set" }));
     expect(await screen.findByText(/Cloud AI is disabled/)).toBeInTheDocument();
+    expect(screen.getByText("Complete the statement")).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/study/generate"), expect.objectContaining({ method: "POST" })));
   });
 
