@@ -239,7 +239,7 @@ def _record_source_event(connection: sqlite3.Connection, source: sqlite3.Row, re
     source_id = int(source["source_id"])
     latest = connection.execute(
         "SELECT event_type, metadata_json FROM memory_events "
-        "WHERE source_id = ? AND event_type IN ('file_imported', 'file_modified') "
+        "WHERE source_id = ? AND event_type IN ('file_imported', 'file_modified', 'note_created', 'webpage_saved', 'screenshot_captured') "
         "ORDER BY event_id DESC LIMIT 1",
         (source_id,),
     ).fetchone()
@@ -249,7 +249,9 @@ def _record_source_event(connection: sqlite3.Connection, source: sqlite3.Row, re
     if latest is not None and latest_hash == source["content_hash"]:
         return
 
-    event_type = "file_imported" if latest is None else "file_modified"
+    event_type = "file_imported" if latest is None or latest["event_type"] in {
+        "note_created", "webpage_saved", "screenshot_captured"
+    } else "file_modified"
     timestamp = datetime.now(UTC)
     date_basis = "imported_at"
     if event_type == "file_modified" and source["modified_at"]:

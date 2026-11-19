@@ -67,7 +67,10 @@ def test_fresh_initialization_creates_versioned_hardened_schema(tmp_path: Path) 
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert [tuple(row) for row in connection.execute(
             "SELECT version FROM schema_versions ORDER BY version"
-        ).fetchall()] == [(0,), (1,), (2,), (3,)]
+        ).fetchall()] == [(0,), (1,), (2,), (3,), (4,)]
+        assert "capture_url" in {
+            row[1] for row in connection.execute("PRAGMA table_info(sources)").fetchall()
+        }
         assert [tuple(row) for row in connection.execute(
             "SELECT name, is_symmetric FROM relationship_types ORDER BY name"
         ).fetchall()] == [
@@ -110,7 +113,7 @@ def test_legacy_migration_preserves_records_and_is_idempotent(tmp_path: Path) ->
 
     initialize_database(database_path)
     with connect(database_path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM schema_versions").fetchone()[0] == 4
+        assert connection.execute("SELECT COUNT(*) FROM schema_versions").fetchone()[0] == 5
         assert connection.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 2
 
 

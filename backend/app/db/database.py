@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS sources (
     modified_at TEXT,
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     captured_at TEXT,
+    capture_url TEXT,
     indexing_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (indexing_status IN ('pending', 'processing', 'done', 'partial', 'error')),
     indexing_error TEXT,
@@ -187,6 +188,7 @@ MIGRATIONS = (
     (1, "knowledge_connections_schema_hardening", "_migration_knowledge_connections_v1"),
     (2, "relationship_unsupported_review_status", "_migration_relationship_unsupported_v2"),
     (3, "study_session_source_scope", "_migration_study_session_source_scope_v3"),
+    (4, "capture_original_url", "_migration_capture_original_url_v4"),
 )
 
 
@@ -723,6 +725,13 @@ def _migration_study_session_source_scope_v3(connection: sqlite3.Connection) -> 
         "CREATE INDEX IF NOT EXISTS idx_study_sessions_source "
         "ON study_sessions(source_id, completed_at)"
     )
+
+
+def _migration_capture_original_url_v4(connection: sqlite3.Connection) -> None:
+    """Store the original URL separately from the managed capture file path."""
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(sources)")}
+    if "capture_url" not in columns:
+        connection.execute("ALTER TABLE sources ADD COLUMN capture_url TEXT")
 
 
 def cache_key(provider: str, operation: str, content_hash: str) -> str:

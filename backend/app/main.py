@@ -11,6 +11,7 @@ from app.api.calendar import router as calendar_router
 from app.api.ask import router as ask_router
 from app.api.connections import router as connections_router
 from app.api.study import router as study_router
+from app.api.capture import router as capture_router
 from app.config import Settings, get_settings
 from app.db.database import initialize_database
 
@@ -43,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ask_router)
     app.include_router(connections_router)
     app.include_router(study_router)
+    app.include_router(capture_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict:

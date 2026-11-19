@@ -197,7 +197,7 @@ export default function StudyView({ sources = [] }) {
                   .filter((s) => s.indexing_status === "done")
                   .map((s) => (
                     <option key={s.source_id} value={s.source_id}>
-                      {s.title || s.original_path}
+                      {s.title || s.filename || "Untitled source"}
                     </option>
                   ))}
               </select>

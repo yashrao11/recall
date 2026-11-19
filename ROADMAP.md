@@ -653,14 +653,17 @@ Returns events grouped by day:
 
 ### 4.3 — Capture Features
 
-**Notes:** `TipTap` markdown editor in `CaptureView.tsx` → `POST /capture` with `type=note`
+**Notes:** Recall's quick-note capture UI → `POST /capture` with `type=note`; notes become Markdown sources.
 
-**Drag & Drop:** `react-dropzone` on the main area → uploads to `POST /capture` with file
+**Drag & Drop:** the capture modal uploads supported files to `POST /capture` and reports per-file indexing status.
 
 **Browser Extension:** `extension/manifest.json` (Manifest V3)
 - Content script captures `document.title` + `document.body.innerText`
 - Sends `POST http://localhost:8000/capture` with `type=webpage`
 - Popup shows "Saved to Recall ✓"
+
+The current backend also supports safe public webpage capture through `POST /capture` with
+`type=webpage`. Browser extension wiring and audio transcription are not part of this milestone.
 
 ---
 

@@ -55,10 +55,14 @@ def list_sources(request: Request) -> dict:
         mounts = [dict(row) for row in connection.execute(
             "SELECT mount_id, path, label, enabled, created_at FROM folder_mounts ORDER BY created_at"
         )]
-        sources = [dict(row) for row in connection.execute(
-            "SELECT source_id, mount_id, source_type, title, original_path, indexing_status, indexing_error "
+        source_rows = [dict(row) for row in connection.execute(
+            "SELECT source_id, mount_id, source_type, title, original_path, capture_url, indexing_status, indexing_error "
             "FROM sources ORDER BY imported_at DESC"
         )]
+    sources = []
+    for source in source_rows:
+        source["filename"] = Path(source.pop("original_path")).name
+        sources.append(source)
     return {"mounts": mounts, "sources": sources}
 
 

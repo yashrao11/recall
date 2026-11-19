@@ -9,6 +9,7 @@ import ChatView from "./components/ChatView";
 import EvidencePanel from "./components/EvidencePanel";
 import ConnectionsView from "./components/ConnectionsView";
 import StudyView from "./components/StudyView";
+import CaptureMenu from "./components/CaptureMenu";
 
 const views = ["month", "week", "3-days", "day"];
 const displayModes = ["wall", "gallery", "list", "timeline"];
@@ -32,8 +33,6 @@ export default function App() {
   const [contextOpen, setContextOpen] = useState(true);
   const [dark, setDark] = useState(false);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
-  const [folder, setFolder] = useState("");
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState(null);
@@ -64,9 +63,8 @@ export default function App() {
   async function removeConversation(id) { try { await deleteConversation(id); if (selectedConversationId === id) newChat(); await refreshConversations(); } catch (error) { setMessage(error.message); } }
   const handleConversationCreated = useCallback((id) => { setSelectedConversationId(id); setActiveView("chat"); refreshConversations(); }, []);
   const handleEvidenceChange = useCallback((assistant) => setSelectedAssistant(assistant), []);
-  async function mountAndIndex(event) {
-    event.preventDefault(); if (!folder.trim()) return; setBusy(true); setMessage("");
-    try { const mounted = await request("/sources/folders", { method: "POST", body: JSON.stringify({ path: folder.trim() }) }); const result = await request("/index/run", { method: "POST" }); setMessage(`Mounted ${mounted.label}. ${result.completed || 0} source(s) indexed.`); setFolder(""); setNewMenuOpen(false); await Promise.all([refreshSources(), refreshStatus(), refreshMonth(month), refreshCalendar(calendarView, selectedDate), refreshContext(selectedDate)]); } catch (error) { setMessage(error.message); } finally { setBusy(false); }
+  async function refreshAfterCapture() {
+    await Promise.all([refreshSources(), refreshStatus(), refreshMonth(month), refreshCalendar(calendarView, calendarView === "month" ? month : selectedDate), refreshContext(selectedDate)]);
   }
   function openEvent(event) { if (event.source_id) window.open(`${API}/sources/${event.source_id}/file`, "_blank", "noopener,noreferrer"); }
   const activeEvents = (calendarView === "month" ? dayData.events : calendarData.events) || [];
@@ -82,7 +80,7 @@ export default function App() {
       </main>
       {contextOpen && (activeView === "chat" ? <EvidencePanel message={selectedAssistant} /> : activeView === "calendar" ? <ContextPanel selectedDate={selectedDate} month={month} eventDates={eventDates} onSelect={selectDate} onMonthChange={(direction) => { const next = shiftPeriod(`${month}-01`, "month", direction).slice(0, 7); setMonth(next); refreshMonth(next); }} onThisDay={onThisDay} recap={recap} /> : activeView === "connections" ? <div className="context-panel context-placeholder"><span className="eyebrow">Knowledge context</span><h2>Follow the evidence.</h2><p>Select an entity or source to inspect supported connections. Relationships are labelled by their origin and review status.</p></div> : activeView === "study" ? <div className="context-panel context-placeholder"><span className="eyebrow">Study Mode</span><h2>Spaced repetition.</h2><p>Cards are scheduled with the SM-2 algorithm. Answer cards honestly — your ratings determine when each card comes back.</p></div> : <div className="context-panel context-placeholder"><span className="eyebrow">Workspace</span><h2>Search results</h2><p>Select a result to open its source.</p></div>)}
     </div>
-    {newMenuOpen && <div className="modal-backdrop" onClick={() => setNewMenuOpen(false)}><div className="content-menu" onClick={(event) => event.stopPropagation()}><div className="menu-heading"><div><span className="eyebrow">Create or import</span><h2>New content</h2></div><button className="icon-button" onClick={() => setNewMenuOpen(false)}>×</button></div><form className="import-form" onSubmit={mountAndIndex}><label>Import a folder</label><input value={folder} onChange={(event) => setFolder(event.target.value)} placeholder="/path/to/folder" /><button className="primary-button" disabled={busy}>{busy ? "Indexing…" : "Mount and index"}</button></form><div className="menu-option disabled"><span>▧</span><div><strong>Add screenshot or image</strong><small>Import a mounted folder containing images</small></div><em>Use folder import</em></div><div className="menu-option disabled"><span>▤</span><div><strong>Create a note</strong><small>No notes API exists yet</small></div><em>Upcoming</em></div><div className="menu-option disabled"><span>↗</span><div><strong>Save a webpage</strong><small>No webpage capture API exists yet</small></div><em>Upcoming</em></div></div></div>}
+    {newMenuOpen && <CaptureMenu onClose={() => setNewMenuOpen(false)} onCaptured={refreshAfterCapture} />}
   </div>;
 }
 

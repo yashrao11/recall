@@ -60,7 +60,7 @@ retrieving with several complementary methods.
 | 4 | **Ask My Memory** | Chat that answers from your own files with clickable citations. Says "not enough evidence" when the files don't contain the answer. |
 | 5 | **Knowledge map** | Extracts topics, people and projects and links them. Every link shows its evidence and can be edited or removed. |
 | 6 | **Study mode** | Generates flashcards, MCQs and short-answer questions linked to source pages, with spaced-repetition scheduling. |
-| 7 | **Universal capture** | Folder mounting, drag-and-drop, in-app notes, browser extension for webpages, audio upload with transcription. |
+| 7 | **Universal capture** | Folder mounting, drag-and-drop uploads, quick notes and safe public webpage capture. |
 
 ### Product principles
 
@@ -199,10 +199,10 @@ These objects also populate the sidebar object types (Topics, People, Projects, 
 ### 4.7 Capture
 
 - **Folders:** mount, exclude, pause, resume, remove.
-- **Drag and drop / upload:** files go to a managed inbox and are processed like any source.
-- **Notes:** Markdown editor (TipTap) stored as sources.
-- **Browser extension (Manifest V3):** sends the page URL and cleaned text to the local API.
-- **Audio:** transcribed with faster-whisper into timestamped, searchable chunks.
+- **Drag and drop / upload:** supported PDF, PPTX, DOCX, TXT, Markdown and common image files go to a managed inbox and use the existing indexer.
+- **Quick notes:** text is stored as a Markdown source and indexed locally.
+- **Public webpage capture:** HTTP(S) pages are fetched with size, timeout and private-network protections; the original URL is preserved.
+- Browser extension and audio transcription remain future work.
 
 Recall never scrapes private messaging apps or records the screen.
 
@@ -516,7 +516,7 @@ model and hardware; LLM features need an API key or a capable local model.
 - [ ] Ask My Memory with citations
 - [ ] Knowledge map with editable relationships
 - [ ] Study mode with spaced repetition
-- [ ] Capture: notes, drag-and-drop, browser extension, audio
+- [x] Capture: quick notes, drag-and-drop uploads, safe public webpage capture
 - [ ] Command palette, themes, polish
 - [ ] Evaluation results published
 - [ ] Tauri desktop packaging

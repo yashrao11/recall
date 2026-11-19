@@ -18,7 +18,7 @@ def extract_file(path: Path, source_type: str) -> list[ExtractedUnit]:
         return _extract_docx(path)
     if source_type == "pptx":
         return _extract_pptx(path)
-    if source_type in {"text", "markdown"}:
+    if source_type in {"text", "markdown", "webpage"}:
         return [ExtractedUnit("document", None, path.read_text(encoding="utf-8", errors="replace"))]
     if source_type == "image":
         mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(

@@ -1,8 +1,9 @@
 export const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export async function request(path, options = {}) {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
     ...options,
   });
   const payload = response.status === 204 ? null : await response.json();
@@ -81,6 +82,25 @@ export async function reviewRelationship(relationshipId, reviewedStatus) {
 
 export async function deleteRelationship(relationshipId) {
   return request(`/connections/relationships/${relationshipId}`, { method: "DELETE" });
+}
+
+export async function captureNote({ title, content }) {
+  return request("/capture", { method: "POST", body: JSON.stringify({ type: "note", title, content }) });
+}
+
+export async function captureWebpage({ title, url }) {
+  return request("/capture", { method: "POST", body: JSON.stringify({ type: "webpage", title, url }) });
+}
+
+export async function captureFiles(files) {
+  const form = new FormData();
+  form.set("type", "file");
+  files.forEach((file) => form.append("files", file));
+  return request("/capture", { method: "POST", body: form, headers: {} });
+}
+
+export async function retryCapture(sourceId) {
+  return request(`/capture/${sourceId}/retry`, { method: "POST" });
 }
 
 // --- Study Mode ---
