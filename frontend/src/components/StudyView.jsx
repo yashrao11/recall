@@ -303,7 +303,7 @@ function CardPreview({ card }) {
               {card.evidence.map((ev, i) => (
                 <a
                   key={i}
-                  href={`${API}/sources/${ev.source_id}/file`}
+                  href={`${API}/sources/${ev.source_id}/open`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="study-evidence-ref"
@@ -398,7 +398,7 @@ function ReviewSession({ cards, index, flipped, onFlip, onRespond, answered, cor
                   {card.evidence.map((ev, i) => (
                     <a
                       key={i}
-                      href={`${API}/sources/${ev.source_id}/file`}
+                      href={`${API}/sources/${ev.source_id}/open`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="study-evidence-ref"

@@ -71,7 +71,7 @@ describe("ConnectionsView", () => {
     expect(await screen.findByText("Source connections")).toBeInTheDocument();
     expect(screen.getByText("synthetic.md · markdown")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open source" }));
-    expect(window.open).toHaveBeenCalledWith(expect.stringContaining("/sources/10/file"), "_blank", "noopener,noreferrer");
+    expect(window.open).toHaveBeenCalledWith(expect.stringContaining("/sources/10/open"), "_blank", "noopener,noreferrer");
   });
 
   it("creates a manual relationship with backend-owned provenance only", async () => {

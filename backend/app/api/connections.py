@@ -93,7 +93,7 @@ def source_connections(
 ) -> dict:
     with get_connection(request.app.state.settings.database_path) as connection:
         source = connection.execute(
-            "SELECT source_id, title, source_type, original_path, indexing_status "
+            "SELECT source_id, title, source_type, original_path, capture_url, indexing_status "
             "FROM sources WHERE source_id = ?", (source_id,)
         ).fetchone()
         if source is None:
@@ -143,6 +143,7 @@ def source_connections(
             "title": source["title"],
             "file_type": source["source_type"],
             "filename": Path(source["original_path"]).name,
+            "capture_url": source["capture_url"],
             "indexing_status": source["indexing_status"],
         },
         "entities": entities,

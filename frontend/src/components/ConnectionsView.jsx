@@ -121,7 +121,8 @@ export default function ConnectionsView({ sources = [] }) {
   }
 
   function openSource(source) {
-    if (source?.source_id) window.open(`${API}/sources/${source.source_id}/file`, "_blank", "noopener,noreferrer");
+    if (source?.capture_url) window.open(source.capture_url, "_blank", "noopener,noreferrer");
+    else if (source?.source_id) window.open(`${API}/sources/${source.source_id}/open`, "_blank", "noopener,noreferrer");
   }
 
   const source = sourceDetail?.source;

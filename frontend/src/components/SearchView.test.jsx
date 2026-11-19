@@ -18,7 +18,7 @@ describe("SearchView", () => {
 
     await waitFor(() => expect(screen.getByRole("link", { name: /Architecture notes/ })).toHaveAttribute(
       "href",
-      "http://localhost:8000/sources/12/file",
+      "http://localhost:8000/sources/12/open",
     ));
   });
 });

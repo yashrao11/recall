@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import html
 import json
 from pathlib import Path
 import shutil
@@ -6,11 +7,12 @@ import subprocess
 import sys
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.db.database import get_connection
 from app.ingestion.scanner import sync_mount
+from app.ingestion.extractor import extract_file
 from app.knowledge.discovery import reconcile_automatic_knowledge
 from app.retrieval.vector_store import FaissVectorStore, VectorStoreUnavailable
 
@@ -148,7 +150,50 @@ def source_file(source_id: int, request: Request) -> FileResponse:
     with get_connection(request.app.state.settings.database_path) as connection:
         source = _source_with_mount(connection, source_id)
     path = _mounted_file_path(source)
-    return FileResponse(path, media_type=source["mime_type"] or "application/octet-stream")
+    filename = Path(source["original_path"]).name.replace('"', "")
+    return FileResponse(
+        path,
+        media_type=source["mime_type"] or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/{source_id}/open")
+def open_source(source_id: int, request: Request):
+    """Open a source in a browser tab, previewing formats browsers cannot render."""
+    with get_connection(request.app.state.settings.database_path) as connection:
+        source = _source_with_mount(connection, source_id)
+    if source["source_type"] == "webpage" and source["capture_url"]:
+        return RedirectResponse(source["capture_url"], status_code=307)
+    path = _mounted_file_path(source)
+    if source["source_type"] in {"pdf", "image"}:
+        filename = Path(source["original_path"]).name.replace('"', "")
+        return FileResponse(
+            path,
+            media_type=source["mime_type"] or "application/octet-stream",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    try:
+        units = extract_file(path, source["source_type"])
+    except Exception as exc:  # noqa: BLE001 - preview must return a safe user-facing error
+        raise HTTPException(status_code=422, detail=f"source preview unavailable: {type(exc).__name__}") from exc
+    title = html.escape(str(source["title"] or Path(source["original_path"]).name))
+    sections = []
+    for index, unit in enumerate(units, start=1):
+        label = unit.page_or_slide if unit.page_or_slide is not None else index
+        sections.append(
+            f"<section><h2>{html.escape(str(unit.unit_type).title())} {label}</h2>"
+            f"<pre>{html.escape(unit.text or 'No text preview available.')}</pre></section>"
+        )
+    body = "".join(sections) or "<p>No text preview available.</p>"
+    document = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>{title} · Recall</title><style>body{{font:16px system-ui;max-width:900px;margin:40px auto;padding:0 24px;color:#27241f;background:#f8f6f2}}"
+        "section{background:#fffdfa;border:1px solid #e5e1da;border-radius:12px;padding:20px;margin:18px 0}"
+        "pre{white-space:pre-wrap;line-height:1.6;font:14px ui-monospace,monospace}h1{font-family:Georgia,serif}"
+        f"</style></head><body><p>Recall source preview</p><h1>{title}</h1>{body}</body></html>"
+    )
+    return HTMLResponse(document)
 
 
 @router.post("/{source_id}/reveal")

@@ -36,7 +36,7 @@ function EvidenceCard({ citation }) {
   const image = citation.thumbnail_url ? `${API}${citation.thumbnail_url}` : null;
   const sourceUrl = citation.source_url?.startsWith("http")
     ? citation.source_url
-    : `${API}${citation.source_url || `/sources/${citation.source_id}/file`}${citation.page && citation.source_type === "pdf" ? `#page=${citation.page}` : ""}`;
+    : `${API}${citation.source_url || `/sources/${citation.source_id}/open`}${citation.page && citation.source_type === "pdf" ? `#page=${citation.page}` : ""}`;
   const passages = citation.passages || [];
   const visiblePassages = expanded ? passages : passages.slice(0, 1);
   return <article className="evidence-card">

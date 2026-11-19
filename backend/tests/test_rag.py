@@ -116,6 +116,36 @@ def test_multi_document_context_and_invalid_model_citations_are_filtered(tmp_pat
     assert "[99]" not in result["answer"]
 
 
+def test_multiple_units_from_one_source_create_one_verified_citation(tmp_path: Path, monkeypatch) -> None:
+    settings, source_ids = seed_database(
+        tmp_path,
+        [("one.pdf", "First passage about deep learning.", 2), ("two.pdf", "Other document.", 9)],
+    )
+    with get_connection(settings.database_path) as connection:
+        second_unit = connection.execute(
+            "INSERT INTO document_units(source_id, unit_type, page_or_slide, extracted_text, short_comment) "
+            "VALUES (?, 'page', 3, ?, ?)",
+            (source_ids[0], "Second passage about deep learning.", "Second passage"),
+        ).lastrowid
+        units = [row[0] for row in connection.execute("SELECT unit_id FROM document_units ORDER BY unit_id")]
+    generation = FakeGenerationProvider()
+    monkeypatch.setattr(
+        pipeline,
+        "retrieve_hybrid",
+        lambda *args, **kwargs: {"results": [
+            fake_result(settings, source_ids[0], units[0]),
+            fake_result(settings, source_ids[0], second_unit, 0.7),
+        ], "total": 2},
+    )
+
+    result = pipeline.ask_question(settings, "Explain deep learning.", generation_provider=generation)
+
+    assert result["status"] == "answered"
+    assert len(result["citations"]) == 1
+    assert result["citations"][0]["source_id"] == source_ids[0]
+    assert len(result["citations"][0]["passages"]) == 2
+
+
 def test_follow_up_uses_local_conversation_history_and_survives_reconnect(tmp_path: Path, monkeypatch) -> None:
     settings, source_ids = seed_database(tmp_path, [("notes.pdf", "Pooling reduces spatial dimensions.", 3)])
     with get_connection(settings.database_path) as connection:

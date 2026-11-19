@@ -81,7 +81,7 @@ export default function App() {
   async function refreshAfterCapture() {
     await Promise.all([refreshSources(), refreshStatus(), refreshMonth(month), refreshCalendar(calendarView, calendarView === "month" ? month : selectedDate), refreshContext(selectedDate)]);
   }
-  function openEvent(event) { if (event.source_id) window.open(`${API}/sources/${event.source_id}/file`, "_blank", "noopener,noreferrer"); }
+  function openEvent(event) { if (event.metadata?.capture_url) window.open(event.metadata.capture_url, "_blank", "noopener,noreferrer"); else if (event.source_id) window.open(`${API}/sources/${event.source_id}/open`, "_blank", "noopener,noreferrer"); }
   async function confirmSourceDelete() {
     if (!deleteCandidate?.source_id) return;
     setDeleteBusy(true);

@@ -149,11 +149,20 @@ def _verified_evidence(connection: sqlite3.Connection, results: list[dict]) -> l
 
 
 def _build_context(evidence: list[dict], max_chars: int) -> tuple[str, list[dict]]:
+    grouped: dict[int, list[dict]] = {}
+    for result in evidence:
+        grouped.setdefault(int(result["source_id"]), []).append(result)
     chunks: list[str] = []
     citations: list[dict] = []
     used = 0
-    for result in evidence:
-        excerpt = _excerpt(result.get("extracted_text") or result.get("short_comment") or "")
+    for source_evidence in grouped.values():
+        result = source_evidence[0]
+        excerpts = [
+            _excerpt(item.get("extracted_text") or item.get("short_comment") or "")
+            for item in source_evidence
+        ]
+        excerpts = list(dict.fromkeys(item for item in excerpts if item))
+        excerpt = "\n".join(excerpts)
         citation = {
             "reference": len(citations) + 1,
             "source_id": int(result["source_id"]),
@@ -162,6 +171,14 @@ def _build_context(evidence: list[dict], max_chars: int) -> tuple[str, list[dict
             "filename": result.get("filename"),
             "page": result.get("page"),
             "excerpt": excerpt,
+            "passages": [
+                {
+                    "unit_id": int(item["unit_id"]),
+                    "page": item.get("page"),
+                    "excerpt": _excerpt(item.get("extracted_text") or item.get("short_comment") or ""),
+                }
+                for item in source_evidence
+            ],
             "source_url": result.get("capture_url") or f"/sources/{int(result['source_id'])}/file",
             "thumbnail_url": result.get("thumbnail_url"),
         }

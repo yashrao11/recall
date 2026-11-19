@@ -176,3 +176,16 @@ def test_finder_reveal_uses_validated_mounted_path(tmp_path: Path, monkeypatch) 
     assert calls[0][1]["check"] is True
     assert calls[0][1]["timeout"] == 10
 
+
+def test_source_open_returns_browser_preview_for_text_file(tmp_path: Path) -> None:
+    settings, source_path, source_id, _ = _settings_and_source(
+        tmp_path, "preview.txt", b"Preview this source in a new browser tab.", "text"
+    )
+    with TestClient(create_app(settings)) as client:
+        response = client.get(f"/sources/{source_id}/open")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Preview this source in a new browser tab." in response.text
+    assert str(source_path) not in response.text
+
