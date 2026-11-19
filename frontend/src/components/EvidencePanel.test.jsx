@@ -14,6 +14,7 @@ describe("EvidencePanel", () => {
     expect(screen.getByRole("heading", { name: "Deep Learning" })).toBeInTheDocument();
     expect(screen.getByText("[2, 4] · pptx")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Reveal in Finder/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Download source/ })).toHaveAttribute("href", "http://localhost:8000/sources/42/file?download=true");
     expect(screen.getByText("Show 1 more")).toBeInTheDocument();
   });
 
@@ -25,5 +26,15 @@ describe("EvidencePanel", () => {
     await user.click(screen.getByRole("button", { name: /Reveal in Finder/ }));
     await waitFor(() => expect(screen.getByText("Revealed in Finder")).toBeInTheDocument());
     expect(fetch).toHaveBeenCalledWith("http://localhost:8000/sources/42/reveal", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("highlights the evidence card selected by a source reference", () => {
+    render(<EvidencePanel selectedReference={4} message={{ citations: [
+      { reference: 2, source_id: 41, unit_id: 1, title: "First source", filename: "first.pdf", source_type: "pdf", excerpt: "First evidence" },
+      { reference: 4, source_id: 42, unit_id: 2, title: "Selected source", filename: "selected.pdf", source_type: "pdf", excerpt: "Selected evidence" },
+    ] }} />);
+
+    expect(screen.getByRole("heading", { name: "Selected source" }).closest("article")).toHaveClass("selected");
+    expect(screen.getByRole("heading", { name: "First source" }).closest("article")).not.toHaveClass("selected");
   });
 });

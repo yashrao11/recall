@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -146,7 +146,7 @@ def list_sources(request: Request, mount_id: int | None = None) -> dict:
 
 
 @router.get("/{source_id}/file")
-def source_file(source_id: int, request: Request) -> FileResponse:
+def source_file(source_id: int, request: Request, download: bool = Query(default=False)) -> FileResponse:
     with get_connection(request.app.state.settings.database_path) as connection:
         source = _source_with_mount(connection, source_id)
     path = _mounted_file_path(source)
@@ -154,7 +154,7 @@ def source_file(source_id: int, request: Request) -> FileResponse:
     return FileResponse(
         path,
         media_type=source["mime_type"] or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={"Content-Disposition": f'{"attachment" if download else "inline"}; filename="{filename}"'},
     )
 
 

@@ -77,7 +77,7 @@ export default function App() {
   function selectConversation(id) { setSelectedConversationId(id); setSelectedAssistant(null); setActiveView("chat"); }
   async function removeConversation(id) { try { await deleteConversation(id); if (selectedConversationId === id) newChat(); await refreshConversations(); } catch (error) { setMessage(error.message); } }
   const handleConversationCreated = useCallback((id) => { setSelectedConversationId(id); setActiveView("chat"); refreshConversations(); }, []);
-  const handleEvidenceChange = useCallback((assistant) => setSelectedAssistant(assistant), []);
+  const handleEvidenceChange = useCallback((assistant, reference = null) => setSelectedAssistant(assistant ? { ...assistant, selected_reference: reference } : null), []);
   async function refreshAfterCapture() {
     await Promise.all([refreshSources(), refreshStatus(), refreshMonth(month), refreshCalendar(calendarView, calendarView === "month" ? month : selectedDate), refreshContext(selectedDate)]);
   }

@@ -20,10 +20,15 @@ export default function ChatView({ conversationId, onConversationCreated, onEvid
   useEffect(() => {
     let cancelled = false;
     setError(""); setState(null);
-    if (!conversationId) { setMessages([]); setLoadingHistory(false); return undefined; }
+    if (!conversationId) { setMessages([]); setLoadingHistory(false); onEvidenceChange(null, null); return undefined; }
     setLoadingHistory(true);
     fetchConversationMessages(conversationId).then((payload) => {
-      if (!cancelled) setMessages(payload.messages || []);
+      if (!cancelled) {
+        const restored = payload.messages || [];
+        setMessages(restored);
+        const latestAssistant = [...restored].reverse().find((item) => item.role === "assistant" && item.citations?.length);
+        onEvidenceChange(latestAssistant || null, null);
+      }
     }).catch((reason) => { if (!cancelled) setError(reason.message); }).finally(() => {
       if (!cancelled) setLoadingHistory(false);
     });
@@ -85,7 +90,7 @@ function Message({ message, onEvidenceChange }) {
     <div className={assistant ? "assistant-bubble" : "user-bubble"}>
       <div className="message-label">{assistant ? "Recall" : "You"}</div>
       {assistant ? <Markdown content={message.content} /> : <p>{message.content}</p>}
-      {assistant && message.citations?.length > 0 && <div className="message-citations"><span>Sources</span>{message.citations.map((citation) => <button key={`${message.message_id}-${citation.reference}`} onClick={() => onEvidenceChange(message)}>[{citation.reference}] {citation.title}</button>)}</div>}
+      {assistant && message.citations?.length > 0 && <div className="message-citations"><span>Sources</span>{message.citations.map((citation) => <button key={`${message.message_id}-${citation.reference}`} onClick={() => onEvidenceChange(message, citation.reference)}>[{citation.reference}] {citation.title}</button>)}</div>}
     </div>
   </div>;
 }

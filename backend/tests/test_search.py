@@ -70,6 +70,8 @@ def test_source_file_and_delete_remove_indexed_content(tmp_path: Path) -> None:
         file_response = client.get(f"/sources/{source_id}/file")
         assert file_response.status_code == 200
         assert file_response.content == source_path.read_bytes()
+        download_response = client.get(f"/sources/{source_id}/file?download=true")
+        assert download_response.headers["content-disposition"].startswith("attachment;")
         assert client.delete(f"/sources/{source_id}").status_code == 204
         assert client.get("/search", params={"q": "attention", "mode": "keyword"}).json()["total"] == 0
 
