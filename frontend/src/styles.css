@@ -112,6 +112,19 @@ button { border: 0; cursor: pointer; }
 .study-quality-btn.q3 { border-color: var(--line); color: var(--ink); }
 .study-quality-btn.q4, .study-quality-btn.q5 { border-color: #c0dbd0; color: var(--green); background: #e5f0e9; }
 .study-quality-btn.q4:hover, .study-quality-btn.q5:hover { background: #d2eae2; }
+.memory-card { position: relative; }
+.memory-delete { position: absolute; z-index: 2; top: 9px; right: 9px; display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid rgba(180,84,66,.35); border-radius: 50%; background: rgba(255,253,250,.94); color: #a24c42; font-size: 18px; line-height: 1; opacity: 0; transform: scale(.9); transition: opacity .15s, transform .15s, background .15s; }
+.memory-card:hover .memory-delete, .memory-card:focus-within .memory-delete { opacity: 1; transform: scale(1); }
+.memory-delete:hover, .memory-delete:focus-visible { background: #fae8e5; border-color: #a24c42; }
+.delete-source-dialog { position: relative; width: min(92vw, 470px); padding: 27px; border: 1px solid #e6c1bb; border-radius: 17px; background: var(--surface); color: var(--ink); box-shadow: 0 25px 70px rgba(32,28,23,.25); }
+.delete-dialog-close { position: absolute; top: 14px; right: 14px; }
+.delete-source-dialog h2 { font-family: "Playfair Display", Georgia, serif; font-size: 27px; margin: 10px 34px 10px 0; }
+.delete-source-dialog p { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 8px 0; }
+.delete-source-dialog p strong { color: var(--ink); }
+.delete-source-note { color: #8b5a2b !important; }
+.delete-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.danger-button { border: 1px solid #a24c42; border-radius: 8px; padding: 9px 12px; background: #a24c42; color: white; font-size: 10px; font-weight: 700; }
+.danger-button:disabled { opacity: .55; cursor: wait; }
 /* Session complete */
 .study-session-complete { text-align: center; padding: 60px 20px; }
 .study-session-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: #e5f0e9; color: var(--green); font-size: 24px; margin: 0 auto 20px; }

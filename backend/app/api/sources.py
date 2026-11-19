@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -176,12 +177,31 @@ def delete_source(source_id: int, request: Request) -> None:
     settings = request.app.state.settings
     with get_connection(request.app.state.settings.database_path) as connection:
         source = _source_with_mount(connection, source_id)
+        source_hash = source["content_hash"]
         unit_ids = [
             int(row["unit_id"])
             for row in connection.execute("SELECT unit_id FROM document_units WHERE source_id = ?", (source_id,))
         ]
         connection.execute("DELETE FROM fts_units WHERE source_id = ?", (source_id,))
         connection.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+        # Citations in old local conversations must not keep pointing at a
+        # source that the user explicitly erased from Recall memory.
+        message_rows = connection.execute(
+            "SELECT message_id, citations_json FROM messages WHERE citations_json <> '[]'"
+        ).fetchall()
+        for message in message_rows:
+            try:
+                citations = json.loads(message["citations_json"] or "[]")
+            except json.JSONDecodeError:
+                citations = []
+            remaining = [item for item in citations if int(item.get("source_id", -1)) != source_id]
+            if len(remaining) != len(citations):
+                connection.execute(
+                    "UPDATE messages SET citations_json = ? WHERE message_id = ?",
+                    (json.dumps(remaining), message["message_id"]),
+                )
+        if source_hash:
+            connection.execute("DELETE FROM api_cache WHERE content_hash = ?", (source_hash,))
         # Explicit source removal also removes automatic graph derivatives that
         # no longer have any evidence. Manual entities/relationships survive.
         connection.execute(

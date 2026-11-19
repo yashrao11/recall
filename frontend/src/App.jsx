@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API, deleteConversation, fetchCalendar, fetchConversations, localDate, request, shiftPeriod } from "./api";
+import { API, deleteConversation, deleteSource, fetchCalendar, fetchConversations, localDate, request, shiftPeriod } from "./api";
 import Sidebar from "./components/Sidebar";
 import ContextPanel from "./components/ContextPanel";
 import MiniCalendar, { eventDatesForMonth } from "./components/MiniCalendar";
@@ -37,6 +37,8 @@ export default function App() {
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [selectedAssistant, setSelectedAssistant] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const eventDates = useMemo(() => eventDatesForMonth(monthData.days), [monthData.days]);
 
@@ -80,6 +82,19 @@ export default function App() {
     await Promise.all([refreshSources(), refreshStatus(), refreshMonth(month), refreshCalendar(calendarView, calendarView === "month" ? month : selectedDate), refreshContext(selectedDate)]);
   }
   function openEvent(event) { if (event.source_id) window.open(`${API}/sources/${event.source_id}/file`, "_blank", "noopener,noreferrer"); }
+  async function confirmSourceDelete() {
+    if (!deleteCandidate?.source_id) return;
+    setDeleteBusy(true);
+    try {
+      await deleteSource(deleteCandidate.source_id);
+      setDeleteCandidate(null);
+      await refreshAfterCapture();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
   const activeEvents = (calendarView === "month" ? dayData.events : calendarData.events) || [];
   const heading = headingFor(selectedDate, activeEvents);
 
@@ -89,11 +104,25 @@ export default function App() {
       <main className="main">
         <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-toggle" onClick={() => setCollapsed(!collapsed)} aria-label="Toggle navigation">☰</button><button className="icon-button" onClick={() => activeView === "chat" ? newChat() : movePeriod(-1)} aria-label="Previous period or new chat">‹</button><button className="icon-button" onClick={() => activeView === "chat" ? openChat() : movePeriod(1)} aria-label="Next period">›</button><div className="breadcrumb"><span>Personal workspace</span><b>/</b><strong>{activeView === "search" ? "Search" : activeView === "chat" ? "Ask My Memory" : activeView === "connections" ? "Connections" : activeView === "study" ? "Study Mode" : "Calendar"}</strong>{activeView === "calendar" && <><b>/</b><span>{formatDate(selectedDate, { month: "short", day: "numeric" })}</span></>}</div></div><div className="top-actions">{activeView === "calendar" && <><button className="today-button" onClick={goToday}>Today</button><button className="context-toggle" onClick={() => setContextOpen(!contextOpen)}>{contextOpen ? "Hide context" : "Show context"}</button></>}{activeView === "chat" && <button className="context-toggle" onClick={() => setContextOpen(!contextOpen)}>{contextOpen ? "Hide evidence" : "Show evidence"}</button>}{activeView === "connections" && <button className="context-toggle" onClick={() => setContextOpen(!contextOpen)}>{contextOpen ? "Hide context" : "Show context"}</button>}{activeView === "search" && <span className="connection"><i /> Local API</span>}</div></header>
         {message && <div className="message">{message}<button onClick={() => setMessage("")}>×</button></div>}
-        {activeView === "search" ? <SearchView /> : activeView === "chat" ? <ChatView conversationId={selectedConversationId} onConversationCreated={handleConversationCreated} onEvidenceChange={handleEvidenceChange} /> : activeView === "connections" ? <ConnectionsView sources={sources} /> : activeView === "study" ? <StudyView sources={sources} /> : <section className="calendar-view"><div className="calendar-heading"><div><span className="eyebrow">{activeEvents.length || 0} memories in view</span><h1>{heading}</h1><p>{formatDate(selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" })} · {timezone}</p></div><div className="view-tools"><div className="view-tabs">{views.map((view) => <button className={calendarView === view ? "selected" : ""} key={view} onClick={() => setCalendarView(view)}>{view === "3-days" ? "3 Days" : view[0].toUpperCase() + view.slice(1)}</button>)}</div><div className="display-tabs">{displayModes.map((mode) => <button className={displayMode === mode ? "selected" : ""} key={mode} onClick={() => setDisplayMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div></div></div><div className="memory-summary"><span>{activeEvents.length ? `${activeEvents.length} recorded ${activeEvents.length === 1 ? "memory" : "memories"}` : "A quiet day"}</span>{calendarData.statistics?.file_types && Object.keys(calendarData.statistics.file_types).length > 0 && <span>{Object.entries(calendarData.statistics.file_types).map(([type, count]) => `${count} ${type}`).join(" · ")}</span>}</div><MemoryWall events={activeEvents} mode={displayMode} onOpen={openEvent} /></section>}
+        {activeView === "search" ? <SearchView /> : activeView === "chat" ? <ChatView conversationId={selectedConversationId} onConversationCreated={handleConversationCreated} onEvidenceChange={handleEvidenceChange} /> : activeView === "connections" ? <ConnectionsView sources={sources} /> : activeView === "study" ? <StudyView sources={sources} /> : <section className="calendar-view"><div className="calendar-heading"><div><span className="eyebrow">{activeEvents.length || 0} memories in view</span><h1>{heading}</h1><p>{formatDate(selectedDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" })} · {timezone}</p></div><div className="view-tools"><div className="view-tabs">{views.map((view) => <button className={calendarView === view ? "selected" : ""} key={view} onClick={() => setCalendarView(view)}>{view === "3-days" ? "3 Days" : view[0].toUpperCase() + view.slice(1)}</button>)}</div><div className="display-tabs">{displayModes.map((mode) => <button className={displayMode === mode ? "selected" : ""} key={mode} onClick={() => setDisplayMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div></div></div><div className="memory-summary"><span>{activeEvents.length ? `${activeEvents.length} recorded ${activeEvents.length === 1 ? "memory" : "memories"}` : "A quiet day"}</span>{calendarData.statistics?.file_types && Object.keys(calendarData.statistics.file_types).length > 0 && <span>{Object.entries(calendarData.statistics.file_types).map(([type, count]) => `${count} ${type}`).join(" · ")}</span>}</div><MemoryWall events={activeEvents} mode={displayMode} onOpen={openEvent} onDelete={setDeleteCandidate} /></section>}
       </main>
       {contextOpen && (activeView === "chat" ? <EvidencePanel message={selectedAssistant} /> : activeView === "calendar" ? <ContextPanel selectedDate={selectedDate} month={month} eventDates={eventDates} onSelect={selectDate} onMonthChange={(direction) => { const next = shiftPeriod(`${month}-01`, "month", direction).slice(0, 7); setMonth(next); refreshMonth(next); }} onThisDay={onThisDay} recap={recap} /> : activeView === "connections" ? <div className="context-panel context-placeholder"><span className="eyebrow">Knowledge context</span><h2>Follow the evidence.</h2><p>Select an entity or source to inspect supported connections. Relationships are labelled by their origin and review status.</p></div> : activeView === "study" ? <div className="context-panel context-placeholder"><span className="eyebrow">Study Mode</span><h2>Spaced repetition.</h2><p>Cards are scheduled with the SM-2 algorithm. Answer cards honestly — your ratings determine when each card comes back.</p></div> : <div className="context-panel context-placeholder"><span className="eyebrow">Workspace</span><h2>Search results</h2><p>Select a result to open its source.</p></div>)}
     </div>
     {newMenuOpen && <CaptureMenu onClose={() => setNewMenuOpen(false)} onCaptured={refreshAfterCapture} />}
+    {deleteCandidate && <DeleteSourceDialog source={deleteCandidate} busy={deleteBusy} onCancel={() => !deleteBusy && setDeleteCandidate(null)} onConfirm={confirmSourceDelete} />}
+  </div>;
+}
+
+function DeleteSourceDialog({ source, busy, onCancel, onConfirm }) {
+  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-source-title">
+    <div className="delete-source-dialog">
+      <button className="icon-button delete-dialog-close" onClick={onCancel} aria-label="Cancel source removal">×</button>
+      <span className="eyebrow">Remove from memory</span>
+      <h2 id="delete-source-title">Erase this file from Recall?</h2>
+      <p><strong>{source.title || source.metadata?.filename || "This source"}</strong> will be removed from Recall’s database, chunks, FTS search, embeddings, thumbnails, calendar events and automatic connections.</p>
+      <p className="delete-source-note">The original file on your disk will not be deleted.</p>
+      <div className="delete-dialog-actions"><button className="secondary-button" onClick={onCancel} disabled={busy}>Keep file</button><button className="danger-button" onClick={onConfirm} disabled={busy}>{busy ? "Removing…" : "Erase from Recall"}</button></div>
+    </div>
   </div>;
 }
 
