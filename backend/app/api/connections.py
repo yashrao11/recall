@@ -104,10 +104,12 @@ def source_connections(
             "WHERE e.source_id = ? AND o.status <> 'inactive'", (source_id,)
         ).fetchone()[0]
         entity_rows = connection.execute(
-            "SELECT o.*, e.evidence_id, e.unit_id, e.discovery_method AS evidence_method, "
+            "SELECT o.*, e.evidence_id, e.source_id, e.unit_id, s.title AS source_title, "
+            "e.discovery_method AS evidence_method, "
             "e.confidence AS evidence_confidence, u.page_or_slide, u.extracted_text, "
             "u.short_comment "
             "FROM object_evidence e JOIN objects o ON o.object_id = e.object_id "
+            "JOIN sources s ON s.source_id = e.source_id "
             "LEFT JOIN document_units u ON u.unit_id = e.unit_id "
             "WHERE e.source_id = ? AND o.status <> 'inactive' "
             "ORDER BY o.object_type, o.normalized_title, e.unit_id LIMIT ? OFFSET ?",
@@ -204,7 +206,7 @@ def entity_detail(
         relationships.append(payload)
     return {
         "entity": _entity_summary(entity),
-        "evidence": [_object_evidence_payload(row) for row in evidence_rows],
+        "evidence": _group_evidence_dicts([_object_evidence_payload(row) for row in evidence_rows]),
         "relationships": relationships,
     }
 
@@ -305,6 +307,7 @@ def _entity_summary(row: sqlite3.Row | dict) -> dict:
     return {
         "object_id": row["object_id"],
         "title": row["title"],
+        "canonical_title": row["normalized_title"],
         "object_type": row["object_type"],
         "description": row["description"],
         "aliases": aliases if isinstance(aliases, list) else [],
@@ -334,6 +337,32 @@ def _object_evidence_payload(row: sqlite3.Row | dict) -> dict:
     }
 
 
+def _group_evidence_dicts(items: list[dict]) -> list[dict]:
+    """Represent one supporting card per source while retaining unit passages."""
+    grouped: dict[int, dict] = {}
+    for item in items:
+        source_id = int(item["source_id"])
+        group = grouped.setdefault(source_id, {**item, "passages": [], "passage_count": 0})
+        passage = {
+            "evidence_id": item.get("evidence_id"),
+            "unit_id": item.get("unit_id"),
+            "page": item.get("page"),
+            "excerpt": item.get("excerpt", ""),
+            "discovery_method": item.get("discovery_method"),
+            "confidence": item.get("confidence"),
+            "supported": item.get("supported", True),
+        }
+        if passage not in group["passages"]:
+            group["passages"].append(passage)
+    for group in grouped.values():
+        group["passage_count"] = len(group["passages"])
+        primary = next((passage for passage in group["passages"] if passage.get("excerpt")), group["passages"][0] if group["passages"] else {})
+        for key in ("evidence_id", "unit_id", "page", "excerpt", "discovery_method", "confidence", "supported"):
+            if key in primary:
+                group[key] = primary[key]
+    return list(grouped.values())
+
+
 def _group_source_entities(rows: list[sqlite3.Row]) -> list[dict]:
     grouped: dict[int, dict] = {}
     for row in rows:
@@ -342,6 +371,8 @@ def _group_source_entities(rows: list[sqlite3.Row]) -> list[dict]:
             "evidence": [],
         })
         item["evidence"].append({
+            "source_id": row["source_id"],
+            "source_title": row["source_title"],
             "evidence_id": row["evidence_id"],
             "unit_id": row["unit_id"],
             "page": row["page_or_slide"],
@@ -350,6 +381,8 @@ def _group_source_entities(rows: list[sqlite3.Row]) -> list[dict]:
             "confidence": row["evidence_confidence"],
             "supported": True,
         })
+    for item in grouped.values():
+        item["evidence"] = _group_evidence_dicts(item["evidence"])
     return list(grouped.values())
 
 
@@ -378,7 +411,7 @@ def _relationship_evidence(connection: sqlite3.Connection, relationship_ids: lis
             "confidence": row["confidence"],
             "supported": True,
         })
-    return grouped
+    return {relationship_id: _group_evidence_dicts(items) for relationship_id, items in grouped.items()}
 
 
 def _group_relationship_rows(rows: list[sqlite3.Row]) -> list[dict]:
@@ -398,6 +431,7 @@ def _group_relationship_rows(rows: list[sqlite3.Row]) -> list[dict]:
             "supported": True,
         })
     for relationship in grouped.values():
+        relationship["evidence"] = _group_evidence_dicts(relationship["evidence"])
         relationship["supported"] = relationship["reviewed_status"] in _VISIBLE_STATUSES and (
             relationship["created_by"] == "user" or bool(relationship["evidence"])
         )
@@ -406,6 +440,9 @@ def _group_relationship_rows(rows: list[sqlite3.Row]) -> list[dict]:
 
 def _relationship_payload(row: sqlite3.Row | dict, evidence: list[dict]) -> dict:
     status_value = row["reviewed_status"]
+    explanation = row["explanation"]
+    if row["discovery_method"] == "cooccurrence":
+        explanation = "Mentioned together in indexed evidence."
     return {
         "relationship_id": row["relationship_id"],
         "relationship_type": row["relationship_type"],
@@ -425,8 +462,9 @@ def _relationship_payload(row: sqlite3.Row | dict, evidence: list[dict]) -> dict
         "discovery_method": row["discovery_method"],
         "reviewed_status": status_value,
         "supported": status_value in _VISIBLE_STATUSES and (row["created_by"] == "user" or bool(evidence)),
-        "explanation": row["explanation"],
+        "explanation": explanation,
         "evidence": evidence,
+        "supporting_source_count": len({item.get("source_id") for item in evidence}),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

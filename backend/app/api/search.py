@@ -26,6 +26,7 @@ def search(
         response = retrieve_hybrid(
             connection, settings, q, mode, limit, type, from_date, to_date,
             provider_builder=build_embedding_provider,
+            group_sources=True,
         )
         if not response["notice"]:
             response.pop("notice")

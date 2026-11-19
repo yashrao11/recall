@@ -103,6 +103,15 @@ def test_entity_listing_search_aliases_filters_pagination_and_empty_results(tmp_
 
 def test_source_connections_and_entity_detail_return_traceable_evidence(tmp_path: Path) -> None:
     app, source_one, source_two, auto_id, unsupported_id, _ = _build_connection_app(tmp_path)
+    with get_connection(app.state.settings.database_path) as connection:
+        extra_unit = connection.execute(
+            "INSERT INTO document_units(source_id, unit_type, page_or_slide, extracted_text) VALUES (?, 'page', 8, 'Another supported passage.')",
+            (source_one,),
+        ).lastrowid
+        connection.execute(
+            "INSERT INTO relationship_evidence(relationship_id, source_id, unit_id, discovery_method) VALUES (?, ?, ?, 'cooccurrence')",
+            (auto_id, source_one, extra_unit),
+        )
     with TestClient(app) as client:
         source = client.get(f"/connections/sources/{source_one}").json()
         assert source["source"]["filename"] == "deep-learning.pdf"
@@ -112,6 +121,8 @@ def test_source_connections_and_entity_detail_return_traceable_evidence(tmp_path
         assert source["relationships"][0]["relationship_id"] == auto_id
         assert source["relationships"][0]["supported"] is True
         assert source["relationships"][0]["evidence"][0]["source_id"] == source_one
+        assert len(source["relationships"][0]["evidence"]) == 1
+        assert source["relationships"][0]["evidence"][0]["passage_count"] == 2
         assert all("original_path" not in item for item in source["entities"])
 
         detail = client.get("/connections/entities/1").json()

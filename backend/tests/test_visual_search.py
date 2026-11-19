@@ -116,7 +116,7 @@ def test_text_query_retrieves_visual_units_with_correct_mapping_and_order(tmp_pa
     assert restarted_results[0]["unit_id"] == top["unit_id"]
 
 
-def test_visual_results_participate_in_hybrid_fusion(tmp_path: Path, monkeypatch) -> None:
+def test_visual_results_are_explicitly_selected(tmp_path: Path, monkeypatch) -> None:
     patch_visual_extractor(monkeypatch)
     settings, diagram_id, _, _ = create_visual_source(tmp_path, "cnn.pdf", "pdf", b"cnn diagram")
     provider = DeterministicMultimodalProvider()
@@ -125,7 +125,7 @@ def test_visual_results_participate_in_hybrid_fusion(tmp_path: Path, monkeypatch
     monkeypatch.setattr("app.api.search.build_embedding_provider", lambda runtime_settings: provider)
 
     with TestClient(app) as client:
-        response = client.get("/search", params={"q": "CNN max pooling", "mode": "hybrid"})
+        response = client.get("/search", params={"q": "CNN max pooling", "mode": "visual"})
 
     assert response.status_code == 200
     payload = response.json()

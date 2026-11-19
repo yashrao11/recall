@@ -45,6 +45,25 @@ def test_keyword_search_finds_filename_metadata(tmp_path: Path) -> None:
     assert response.json()["results"][0]["match_type"] == ["filename"]
 
 
+def test_search_groups_multiple_matching_units_by_source(tmp_path: Path) -> None:
+    app, source_id, _ = build_indexed_app(tmp_path)
+    with get_connection(app.state.settings.database_path) as connection:
+        unit_id = connection.execute(
+            "INSERT INTO document_units(source_id, unit_type, extracted_text, short_comment) VALUES (?, 'document', ?, ?)",
+            (source_id, "Self-attention appears again in a second passage.", "Self-attention appears again"),
+        ).lastrowid
+        connection.execute(
+            "INSERT INTO fts_units(unit_id, source_id, extracted_text, short_comment, tags) VALUES (?, ?, ?, ?, '')",
+            (unit_id, source_id, "Self-attention appears again in a second passage.", "Self-attention appears again"),
+        )
+    with TestClient(app) as client:
+        response = client.get("/search", params={"q": "attention", "mode": "keyword"})
+    payload = response.json()
+    assert payload["total"] == 1
+    assert len(payload["results"]) == 1
+    assert payload["results"][0]["additional_passages"] == 1
+
+
 def test_source_file_and_delete_remove_indexed_content(tmp_path: Path) -> None:
     app, source_id, source_path = build_indexed_app(tmp_path)
     with TestClient(app) as client:

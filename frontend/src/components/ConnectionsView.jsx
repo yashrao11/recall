@@ -9,6 +9,24 @@ import {
   reviewRelationship,
 } from "../api";
 
+const ENTITY_TYPE_PRIORITY = { person: 5, project: 5, organization: 5, place: 4, event: 4, concept: 3, topic: 2 };
+
+function canonicalEntities(entities) {
+  const grouped = new Map();
+  for (const entity of entities) {
+    const key = entity.canonical_title || entity.title?.trim().toLowerCase();
+    const existing = grouped.get(key);
+    if (!existing || (ENTITY_TYPE_PRIORITY[entity.object_type] || 0) > (ENTITY_TYPE_PRIORITY[existing.object_type] || 0)) {
+      grouped.set(key, { ...entity, aliases: Array.from(new Set([...(existing?.aliases || []), ...(entity.aliases || []), ...(existing && existing.title !== entity.title ? [existing.title] : [])])) });
+    } else if (existing) {
+      existing.aliases = Array.from(new Set([...(existing.aliases || []), ...(entity.aliases || []), ...(existing.title !== entity.title ? [entity.title] : [])]));
+      existing.source_count = Math.max(existing.source_count || 0, entity.source_count || 0);
+      existing.relationship_count = Math.max(existing.relationship_count || 0, entity.relationship_count || 0);
+    }
+  }
+  return Array.from(grouped.values());
+}
+
 const relationshipTypes = [
   ["related_to", "Related to"],
   ["similar_to", "Similar to"],
@@ -107,6 +125,7 @@ export default function ConnectionsView({ sources = [] }) {
   }
 
   const source = sourceDetail?.source;
+  const visibleEntities = canonicalEntities(entities);
   return <section className="connections-view">
     <div className="connections-header">
       <div><span className="eyebrow">Knowledge connections</span><h1>See how your memories connect.</h1><p>Explore entities and the evidence that links them across your indexed collection.</p></div>
@@ -124,7 +143,7 @@ export default function ConnectionsView({ sources = [] }) {
     <div className="connections-layout">
       <div className="connections-list-panel">
         <div className="panel-heading"><div><span className="eyebrow">Entities</span><strong>{total} discovered</strong></div><span>{page + 1} / {Math.max(1, Math.ceil(total / 24))}</span></div>
-        {loading ? <div className="connection-state">Loading entities…</div> : entities.length ? <div className="entity-list">{entities.map((entity) => <button key={entity.object_id} className={`entity-card ${selectedId === entity.object_id ? "selected" : ""}`} onClick={() => { setSelectedId(entity.object_id); setSourceId(""); }}><span className="entity-type">{entity.object_type}</span><strong>{entity.title}</strong>{entity.aliases?.length > 0 && <small>{entity.aliases.slice(0, 2).join(" · ")}</small>}<span className="entity-meta">{entity.relationship_count || 0} connections · {entity.source_count || 0} supporting sources</span></button>)}</div> : <div className="connection-state"><strong>No meaningful entities found</strong><span>Try a different search, show single-source entities, or index more files.</span></div>}
+        {loading ? <div className="connection-state">Loading entities…</div> : visibleEntities.length ? <div className="entity-list">{visibleEntities.map((entity) => <button key={entity.object_id} className={`entity-card ${selectedId === entity.object_id ? "selected" : ""}`} onClick={() => { setSelectedId(entity.object_id); setSourceId(""); }}><span className="entity-type">{entity.object_type}</span><strong>{entity.title}</strong>{entity.aliases?.length > 0 && <small>{entity.aliases.slice(0, 2).join(" · ")}</small>}<span className="entity-meta">{entity.relationship_count || 0} connections · {entity.source_count || 0} supporting sources</span></button>)}</div> : <div className="connection-state"><strong>No meaningful entities found</strong><span>Try a different search, show single-source entities, or index more files.</span></div>}
         <div className="pagination"><button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button><button disabled={(page + 1) * 24 >= total} onClick={() => setPage(page + 1)}>Next</button></div>
       </div>
       <div className="connection-detail-panel">
@@ -143,11 +162,20 @@ function EntityDetail({ detail, includeUnsupported, onToggleUnsupported, onEntit
 function Relationship({ item, onEntity, onReview, onDelete, onOpenSource, showBoth = false }) {
   const other = item.direction === "incoming" ? item.from_entity : item.to_entity;
   const direction = item.direction === "symmetric" ? "↔" : item.direction === "incoming" ? "←" : "→";
-  return <article className={`relationship-card ${item.supported === false ? "unsupported" : ""}`}><div className="relationship-line">{showBoth ? <><button className="link-button" onClick={() => onEntity(item.from_entity.object_id)}>{item.from_entity.title}</button><span className="relationship-arrow">{item.is_symmetric ? "↔" : "→"}</span><button className="link-button" onClick={() => onEntity(item.to_entity.object_id)}>{item.to_entity.title}</button></> : <><span className="relationship-arrow">{direction}</span><button className="link-button" onClick={() => onEntity(other.object_id)}>{other.title}</button></>}<span className="relationship-type">{item.relationship_type}</span></div><p>{item.explanation || "Connected through shared knowledge evidence."}</p><div className="relationship-meta"><span>{item.created_by} · {item.reviewed_status}</span><span>{item.supported === false ? "Unsupported" : "Evidence supported"}</span></div>{item.evidence?.length > 0 && <div className="relationship-evidence">{item.evidence.map((evidence) => <Evidence key={evidence.evidence_id} evidence={evidence} onOpenSource={onOpenSource} compact />)}</div>}<div className="relationship-actions">{item.created_by === "system" || item.created_by === "llm" ? item.reviewed_status === "unreviewed" && <><button onClick={() => onReview(item.relationship_id, "confirmed")}>Confirm</button><button onClick={() => onReview(item.relationship_id, "rejected")}>Reject</button><button onClick={() => onReview(item.relationship_id, "unsupported")}>Mark unsupported</button></> : <button onClick={() => onDelete(item.relationship_id)}>Delete relationship</button>}</div></article>;
+  return <article className={`relationship-card ${item.supported === false ? "unsupported" : ""}`}><div className="relationship-line">{showBoth ? <><button className="link-button" onClick={() => onEntity(item.from_entity.object_id)}>{item.from_entity.title}</button><span className="relationship-arrow">{item.is_symmetric ? "↔" : "→"}</span><button className="link-button" onClick={() => onEntity(item.to_entity.object_id)}>{item.to_entity.title}</button></> : <><span className="relationship-arrow">{direction}</span><button className="link-button" onClick={() => onEntity(other.object_id)}>{other.title}</button></>}<span className="relationship-type">{item.relationship_type}</span></div><p>{item.explanation || "Connected through shared knowledge evidence."}</p><div className="relationship-meta"><span>{item.created_by} · {item.reviewed_status}</span><span>{item.supported === false ? "Unsupported" : `Evidence supported · ${item.supporting_source_count || item.evidence?.length || 0} source${(item.supporting_source_count || item.evidence?.length || 0) === 1 ? "" : "s"}`}</span></div>{item.evidence?.length > 0 && <div className="relationship-evidence">{item.evidence.map((evidence) => <Evidence key={evidence.evidence_id || evidence.source_id} evidence={evidence} onOpenSource={onOpenSource} compact />)}</div>}<div className="relationship-actions">{item.created_by === "system" || item.created_by === "llm" ? item.reviewed_status === "unreviewed" && <><button onClick={() => onReview(item.relationship_id, "confirmed")}>Confirm</button><button onClick={() => onReview(item.relationship_id, "rejected")}>Reject</button><button onClick={() => onReview(item.relationship_id, "unsupported")}>Mark unsupported</button></> : <button onClick={() => onDelete(item.relationship_id)}>Delete relationship</button>}</div></article>;
 }
 
 function Evidence({ evidence, onOpenSource, compact = false }) {
-  return <div className={`evidence-item ${compact ? "compact" : ""}`}><div><strong>{evidence.source_title || `Source ${evidence.source_id}`}</strong>{evidence.page != null && <span>Page {evidence.page}</span>}</div>{evidence.excerpt && <p>{evidence.excerpt}</p>}<small>{evidence.discovery_method || "indexed evidence"}{evidence.confidence != null ? ` · ${Math.round(evidence.confidence * 100)}% confidence` : ""}</small>{evidence.source_id && <button className="text-button" onClick={() => onOpenSource({ source_id: evidence.source_id })}>Open source</button>}</div>;
+  const [expanded, setExpanded] = useState(false);
+  const passages = evidence.passages || [{ page: evidence.page, excerpt: evidence.excerpt }];
+  const visible = expanded ? passages : passages.slice(0, 1);
+  return <div className={`evidence-item ${compact ? "compact" : ""}`}><div><strong>{evidence.source_title || `Source ${evidence.source_id}`}</strong>{evidence.page != null && <span>Page {evidence.page}</span>}{evidence.passage_count > 1 && <small>{evidence.passage_count} passages</small>}</div>{visible.map((passage, index) => <p key={`${passage.unit_id || "passage"}-${index}`}>{readableConnectionExcerpt(passage.excerpt) || "Text preview unavailable."}{passage.page != null && passage.page !== evidence.page ? ` · Page ${passage.page}` : ""}</p>)}<small>{evidence.discovery_method || "indexed evidence"}{evidence.confidence != null ? ` · ${Math.round(evidence.confidence * 100)}% confidence` : ""}</small><div className="evidence-item-actions">{evidence.source_id && <button className="text-button" onClick={() => onOpenSource({ source_id: evidence.source_id })}>Open source</button>}{passages.length > 1 && <button className="text-button" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : `Show ${passages.length - 1} more`}</button>}</div></div>;
+}
+
+function readableConnectionExcerpt(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const readable = (text.match(/[\p{L}\p{N}]/gu) || []).length;
+  return readable >= 12 && readable / Math.max(text.length, 1) >= 0.45 ? text : "";
 }
 
 function SourceConnections({ source, data, onEntity, onOpenSource, onReview, onDelete }) {

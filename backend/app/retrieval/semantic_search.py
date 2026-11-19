@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import sqlite3
 
 from app.ai.providers import EmbeddingProvider
@@ -33,7 +34,7 @@ def vector_search(
     ids = [unit_id for unit_id, _ in ranked]
     placeholders = ",".join("?" for _ in ids)
     rows = connection.execute(
-        "SELECT u.unit_id, u.source_id, u.page_or_slide, u.short_comment, u.tags_json, "
+        "SELECT u.unit_id, u.source_id, u.page_or_slide, u.extracted_text, u.short_comment, u.tags_json, "
         "s.title, s.source_type, s.original_path, u.thumbnail_path "
         f"FROM document_units u JOIN sources s ON s.source_id = u.source_id "
         f"WHERE s.indexing_status IN ('done', 'partial') AND s.excluded = 0 "
@@ -45,6 +46,24 @@ def vector_search(
     for unit_id, score in ranked:
         row = by_id.get(unit_id)
         if row is not None:
+            if mode == "semantic" and row["source_type"] == "image" and (
+                not _meaningful_image_text(row["extracted_text"])
+                or not _query_overlaps_text(query, row["extracted_text"])
+            ):
+                continue
             results.append(_result(dict(row), mode, score))
     return results
+
+
+def _meaningful_image_text(value: str | None) -> bool:
+    text = " ".join(str(value or "").split())
+    letters = len(re.findall(r"[A-Za-z]", text))
+    return letters >= 12 and letters / max(len(text), 1) >= 0.45
+
+
+def _query_overlaps_text(query: str, text: str | None) -> bool:
+    stopwords = {"a", "an", "are", "find", "for", "how", "in", "is", "me", "my", "of", "the", "to", "what", "with"}
+    query_tokens = {token for token in re.findall(r"[a-z0-9]+", query.lower()) if token not in stopwords and len(token) > 2}
+    text_tokens = set(re.findall(r"[a-z0-9]+", str(text or "").lower()))
+    return bool(query_tokens & text_tokens)
 

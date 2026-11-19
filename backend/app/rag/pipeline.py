@@ -127,7 +127,7 @@ def _verified_evidence(connection: sqlite3.Connection, results: list[dict]) -> l
         if unit_id in seen_units:
             continue
         row = connection.execute(
-            "SELECT u.unit_id, u.source_id, u.page_or_slide, u.extracted_text, u.short_comment, "
+            "SELECT u.unit_id, u.source_id, u.page_or_slide, u.extracted_text, u.short_comment, u.thumbnail_path, "
             "s.title, s.original_path, s.source_type, s.capture_url "
             "FROM document_units u JOIN sources s ON s.source_id = u.source_id WHERE u.unit_id = ?",
             (unit_id,),
@@ -142,6 +142,7 @@ def _verified_evidence(connection: sqlite3.Connection, results: list[dict]) -> l
         item["filename"] = Path(row["original_path"]).name
         item["source_type"] = row["source_type"]
         item["capture_url"] = row["capture_url"]
+        item["thumbnail_url"] = f"/units/{unit_id}/thumbnail" if row["thumbnail_path"] else None
         item["page"] = row["page_or_slide"]
         verified.append(item)
     return verified
@@ -162,6 +163,7 @@ def _build_context(evidence: list[dict], max_chars: int) -> tuple[str, list[dict
             "page": result.get("page"),
             "excerpt": excerpt,
             "source_url": result.get("capture_url") or f"/sources/{int(result['source_id'])}/file",
+            "thumbnail_url": result.get("thumbnail_url"),
         }
         block = (
             f"[{citation['reference']}] {citation['title']} ({citation['filename']})"
