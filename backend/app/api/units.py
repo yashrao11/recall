@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,7 +20,8 @@ def get_unit(unit_id: int, request: Request) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="unit not found")
     result = dict(row)
-    result["tags"] = __import__("json").loads(result.pop("tags_json"))
+    result["filename"] = Path(result.pop("original_path")).name
+    result["tags"] = json.loads(result.pop("tags_json"))
     return result
 
 
@@ -42,7 +44,12 @@ def get_thumbnail(unit_id: int, request: Request) -> FileResponse:
         raise HTTPException(status_code=403, detail="source is outside its mounted folder") from exc
     if not row["mount_enabled"] or not source_path.is_file():
         raise HTTPException(status_code=404, detail="source file is unavailable")
-    thumbnail = request.app.state.settings.derived_dir / row["thumbnail_path"]
+    derived_root = request.app.state.settings.derived_dir.resolve()
+    thumbnail = (request.app.state.settings.derived_dir / row["thumbnail_path"]).resolve()
+    try:
+        thumbnail.relative_to(derived_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="thumbnail is outside the derived data folder") from exc
     if not thumbnail.is_file():
         raise HTTPException(status_code=404, detail="thumbnail not found")
     return FileResponse(thumbnail, media_type="image/png")

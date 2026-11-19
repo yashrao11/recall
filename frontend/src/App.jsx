@@ -55,7 +55,7 @@ export default function App() {
     } catch (error) { setMessage(error.message); }
   }
   function selectDate(date) { setSelectedDate(date); setMonth(date.slice(0, 7)); }
-  function movePeriod(direction) { const next = shiftPeriod(selectedDate, calendarView, direction); setSelectedDate(next); setMonth(calendarView === "month" ? next : next.slice(0, 7)); }
+  function movePeriod(direction) { if (activeView !== "calendar") return; const next = shiftPeriod(selectedDate, calendarView, direction); setSelectedDate(next); setMonth(calendarView === "month" ? next : next.slice(0, 7)); }
   function goToday() { selectDate(today); }
   function openChat() { setActiveView("chat"); }
   function newChat() { setSelectedConversationId(null); setSelectedAssistant(null); setActiveView("chat"); }

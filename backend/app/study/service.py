@@ -177,6 +177,7 @@ def _build_evidence(rows, max_chars):
             item["excerpt"] = excerpt[:max(0, max_chars - len(prefix) - 1)]
             block = prefix + item["excerpt"] + "\n"
         evidence.append(item)
+        blocks.append(block)
         used += len(block)
     return "\n".join(blocks), evidence
 

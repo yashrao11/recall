@@ -40,7 +40,6 @@ def mount_folder(payload: FolderMountRequest, request: Request) -> dict:
 
     return {
         "mount_id": cursor.lastrowid,
-        "path": str(folder),
         "label": payload.label or folder.name,
         "enabled": True,
         "created_at": datetime.now(UTC).isoformat(),
@@ -53,7 +52,7 @@ def mount_folder(payload: FolderMountRequest, request: Request) -> dict:
 def list_sources(request: Request) -> dict:
     with get_connection(request.app.state.settings.database_path) as connection:
         mounts = [dict(row) for row in connection.execute(
-            "SELECT mount_id, path, label, enabled, created_at FROM folder_mounts ORDER BY created_at"
+            "SELECT mount_id, label, enabled, created_at FROM folder_mounts ORDER BY created_at"
         )]
         source_rows = [dict(row) for row in connection.execute(
             "SELECT source_id, mount_id, source_type, title, original_path, capture_url, indexing_status, indexing_error "

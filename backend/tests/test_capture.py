@@ -37,6 +37,23 @@ def test_quick_note_becomes_searchable_source_and_calendar_event(tmp_path: Path)
         assert [event["event_type"] for event in events] == ["note_created"]
 
 
+def test_unit_metadata_exposes_filename_without_absolute_source_path(tmp_path: Path) -> None:
+    with client_for(tmp_path) as client:
+        captured = client.post("/capture", json={
+            "type": "note", "title": "Private path check", "content": "Safe indexed content.",
+        }).json()["items"][0]
+        with connect(tmp_path / "data" / "recall.sqlite3") as connection:
+            unit_id = connection.execute(
+                "SELECT unit_id FROM document_units WHERE source_id = ?", (captured["source_id"],)
+            ).fetchone()[0]
+        unit = client.get(f"/units/{unit_id}")
+
+    assert unit.status_code == 200
+    payload = unit.json()
+    assert payload["filename"]
+    assert "original_path" not in payload
+
+
 def test_duplicate_capture_is_idempotent(tmp_path: Path) -> None:
     payload = {"type": "note", "content": "An idempotent captured note."}
     with client_for(tmp_path) as client:

@@ -26,7 +26,7 @@ def test_mount_folder_and_report_status(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         response = client.post("/sources/folders", json={"path": str(folder)})
         assert response.status_code == 201
-        assert response.json()["path"] == str(folder.resolve())
+        assert "path" not in response.json()
 
         listing = client.get("/sources").json()
         assert len(listing["mounts"]) == 1

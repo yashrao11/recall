@@ -21,9 +21,11 @@ class FakeStudyProvider:
     def __init__(self, payload: dict):
         self.payload = payload
         self.calls = 0
+        self.prompts = []
 
     def generate(self, prompt, content_hash, connection, *, system_instruction=None):
         self.calls += 1
+        self.prompts.append(prompt)
         assert "Retrieved" not in prompt  # Study prompt uses its own evidence heading.
         assert system_instruction and "source_refs" in system_instruction
         return json.dumps(self.payload)
@@ -159,6 +161,8 @@ def test_generate_study_set_validates_citations_and_persists_mcq_explanation(tmp
     result = generate_study_set(settings, source_id=source_id, generation_provider=provider)
     assert result["status"] == "ready"
     assert len(result["cards"]) == 2
+    assert "Neural networks are computational models" in provider.prompts[0]
+    assert "Backpropagation is an algorithm" in provider.prompts[0]
     mcq = next(card for card in result["cards"] if card["card_type"] == "mcq")
     assert mcq["options"] == ["1", "2", "3", "4"]
     assert mcq["explanation"] == "The question defines four options."
