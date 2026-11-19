@@ -283,6 +283,22 @@ def run_pending(
     }
 
 
+def queue_reindex(settings: Settings, mount_id: int | None = None) -> int:
+    """Queue existing available sources for an explicit provider/configuration change."""
+    with get_connection(settings.database_path) as connection:
+        clauses = ["excluded = 0", "indexing_status IN ('done', 'partial', 'error')"]
+        parameters: list[object] = []
+        if mount_id is not None:
+            clauses.append("mount_id = ?")
+            parameters.append(mount_id)
+        cursor = connection.execute(
+            "UPDATE sources SET indexing_status = 'pending', indexing_error = NULL "
+            f"WHERE {' AND '.join(clauses)}",
+            parameters,
+        )
+        return int(cursor.rowcount)
+
+
 def _set_source_status(settings: Settings, source_id: int, status: str, detail: str | None) -> None:
     with get_connection(settings.database_path) as connection:
         connection.execute(

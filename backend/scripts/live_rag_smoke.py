@@ -99,6 +99,9 @@ def main() -> int:
                     "VALUES (?, ?, ?, ?, ?)",
                     (source_id, "note", 1, SOURCE_TEXT, SOURCE_TEXT),
                 ).lastrowid
+                connection.execute(
+                    "UPDATE sources SET indexing_status = 'done' WHERE source_id = ?", (source_id,)
+                )
 
             settings = Settings(
                 data_dir=temporary_path / "data",

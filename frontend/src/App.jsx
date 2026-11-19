@@ -41,6 +41,19 @@ export default function App() {
   const eventDates = useMemo(() => eventDatesForMonth(monthData.days), [monthData.days]);
 
   useEffect(() => { refreshSources(); refreshStatus(); refreshMonth(month); refreshConversations(); }, []);
+  useEffect(() => {
+    function handleShortcut(event) {
+      const target = event.target;
+      const editing = target instanceof HTMLElement && target.matches("input, textarea, select, [contenteditable='true']");
+      if (event.metaKey && event.key.toLowerCase() === "k" && !editing) {
+        event.preventDefault();
+        setActiveView("search");
+        window.dispatchEvent(new Event("recall:focus-search"));
+      }
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
   useEffect(() => { refreshCalendar(calendarView, calendarView === "month" ? month : selectedDate); refreshCalendar("day", selectedDate, setDayData); refreshContext(selectedDate); }, [calendarView, selectedDate, month]);
 
   async function refreshStatus() { try { setStatus(await request("/index/status")); } catch (error) { setMessage(error.message); } }

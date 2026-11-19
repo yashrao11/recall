@@ -85,7 +85,9 @@ class GeminiGenerationProvider(GenerationProvider):
             interaction = self._client.interactions.create(**request)
             output = _extract_output_text(interaction)
         except Exception as exc:  # noqa: BLE001 - provider boundary must normalize SDK errors
-            raise GenerationProviderError(f"Gemini generation failed: {type(exc).__name__}") from exc
+            code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+            detail = "rate limit" if code == 429 else f"HTTP {code}" if code else type(exc).__name__
+            raise GenerationProviderError(f"Gemini generation failed ({detail})") from exc
         if not output.strip():
             raise GenerationProviderError("Gemini generation returned an empty response")
         put_cached_response(connection, key, content_hash, self.name, "generate", output)

@@ -105,6 +105,6 @@ function Markdown({ content }) {
 }
 
 function StatusBanner({ state }) {
-  const labels = { cloud_disabled: "Cloud AI is disabled. Your conversation is saved locally, but Recall cannot generate an answer until cloud AI is enabled.", insufficient_evidence: "Recall could not find enough indexed evidence to answer this question.", provider_error: "The generation service returned an error. No successful answer was shown.", provider_unavailable: "The configured generation provider is unavailable." };
+  const labels = { no_sources_indexed: "No sources are indexed yet. Capture or mount a file, then run indexing.", cloud_disabled: "Cloud AI is disabled. Your conversation is saved locally, but Recall cannot generate an answer until cloud AI is enabled.", insufficient_evidence: "Recall could not find enough indexed evidence to answer this question.", provider_error: "The generation service returned an error. No successful answer was shown.", provider_unavailable: "The configured generation provider is unavailable." };
   return labels[state] ? <div className={`chat-status ${state}`}>{labels[state]}</div> : null;
 }

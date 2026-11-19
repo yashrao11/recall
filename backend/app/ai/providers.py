@@ -47,6 +47,17 @@ class UnitMetadataProvider(Protocol):
     ) -> tuple[str, list[str]]: ...
 
 
+def _provider_failure(operation: str, exc: Exception) -> ProviderUnavailable:
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code == 429:
+        detail = "rate limit"
+    elif code:
+        detail = f"HTTP {code}"
+    else:
+        detail = type(exc).__name__
+    return ProviderUnavailable(f"Gemini {operation} failed ({detail})")
+
+
 @dataclass
 class GeminiProvider:
     api_key: str
@@ -100,11 +111,14 @@ class GeminiProvider:
             return [float(value) for value in cached]
         from google.genai import types
 
-        result = self._client.models.embed_content(
-            model=self.model,
-            contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type)],
-            config=types.EmbedContentConfig(output_dimensionality=self.dimension),
-        )
+        try:
+            result = self._client.models.embed_content(
+                model=self.model,
+                contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type)],
+                config=types.EmbedContentConfig(output_dimensionality=self.dimension),
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize SDK/provider failures
+            raise _provider_failure("image embedding", exc) from exc
         values = _validated_embedding(_extract_embedding(result), self.dimension)
         put_cached_response(connection, key, content_hash, self.name, "embed_image", values)
         return values
@@ -124,15 +138,18 @@ class GeminiProvider:
             return str(cached)
         from google.genai import types
 
-        response = self._client.models.generate_content(
-            model=self.metadata_model,
-            contents=[
-                "Transcribe only the readable text in this image. Return plain text. "
-                "If there is no readable text, return an empty string. Do not describe the image "
-                "or invent missing content.",
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            ],
-        )
+        try:
+            response = self._client.models.generate_content(
+                model=self.metadata_model,
+                contents=[
+                    "Transcribe only the readable text in this image. Return plain text. "
+                    "If there is no readable text, return an empty string. Do not describe the image "
+                    "or invent missing content.",
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize SDK/provider failures
+            raise _provider_failure("visual text extraction", exc) from exc
         text = str(getattr(response, "text", "") or "").strip()
         put_cached_response(connection, key, content_hash, self.name, "extract_image_text", text)
         return text
@@ -156,12 +173,18 @@ class GeminiProvider:
         if image_bytes is not None and mime_type is not None:
             from google.genai import types
             contents = [prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type)]
-        response = self._client.models.generate_content(
-            model=self.metadata_model,
-            contents=contents,
-            config={"response_mime_type": "application/json"},
-        )
-        payload = json.loads(response.text)
+        try:
+            response = self._client.models.generate_content(
+                model=self.metadata_model,
+                contents=contents,
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize SDK/provider failures
+            raise _provider_failure("metadata generation", exc) from exc
+        raw_payload = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.text.strip(), flags=re.IGNORECASE)
+        try:
+            payload = json.loads(raw_payload)
+        except json.JSONDecodeError as exc:
+            raise ProviderUnavailable("Gemini metadata response was not valid JSON") from exc
         comment = str(payload.get("comment", "")).strip()
         tags = _normalise_tags(payload.get("tags", []))
         put_cached_response(
@@ -182,11 +205,14 @@ class GeminiProvider:
             return _validated_embedding([float(value) for value in cached], self.dimension)
         from google.genai import types
 
-        result = self._client.models.embed_content(
-            model=self.model,
-            contents=text,
-            config=types.EmbedContentConfig(output_dimensionality=self.dimension),
-        )
+        try:
+            result = self._client.models.embed_content(
+                model=self.model,
+                contents=text,
+                config=types.EmbedContentConfig(output_dimensionality=self.dimension),
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize SDK/provider failures
+            raise _provider_failure(operation, exc) from exc
         values = _validated_embedding(_extract_embedding(result), self.dimension)
         put_cached_response(connection, key, content_hash, self.name, operation, values)
         return values

@@ -15,6 +15,23 @@ def load_project_environment(env_path: Path | None = None) -> Path:
     load_dotenv(dotenv_path=path, override=False)
     return path
 
+
+def resolve_data_dir(value: str | Path) -> Path:
+    """Resolve DATA_DIR consistently regardless of the process working directory."""
+    configured = Path(value).expanduser()
+    if configured.is_absolute():
+        return configured
+    project_path = (PROJECT_ROOT / configured).resolve()
+    legacy_path = (PROJECT_ROOT / "backend" / configured).resolve()
+    project_database = project_path / "recall.sqlite3"
+    legacy_database = legacy_path / "recall.sqlite3"
+    if legacy_database.exists() and not project_database.exists():
+        return legacy_path
+    if legacy_database.exists() and project_database.exists() and legacy_database.stat().st_mtime > project_database.stat().st_mtime:
+        return legacy_path
+    return project_path
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime configuration loaded from environment variables or `.env`."""
@@ -31,9 +48,7 @@ class Settings:
     gemini_embedding_model: str = "gemini-embedding-2"
     gemini_metadata_model: str = "gemini-2.5-flash"
     gemini_generation_model: str = "gemini-3.1-flash-lite"
-    cors_origins: list[str] = field(
-        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
-    )
+    cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"])
 
     @property
     def database_path(self) -> Path:
@@ -48,15 +63,11 @@ class Settings:
 def get_settings() -> Settings:
     load_project_environment()
     raw_origins = os.getenv("CORS_ORIGINS")
-    origins = (
-        [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
-        if raw_origins
-        else ["http://localhost:5173", "http://127.0.0.1:5173"]
-    )
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()] if raw_origins else ["http://localhost:5173", "http://127.0.0.1:5173"]
     return Settings(
         app_name=os.getenv("APP_NAME", "Recall"),
         environment=os.getenv("ENVIRONMENT", "development"),
-        data_dir=Path(os.getenv("DATA_DIR", str(Path.home() / ".local" / "share" / "recall"))),
+        data_dir=resolve_data_dir(os.getenv("DATA_DIR", str(Path.home() / ".local" / "share" / "recall"))),
         allow_cloud_ai=os.getenv("ALLOW_CLOUD_AI", "false").lower() in {"1", "true", "yes"},
         llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
         visual_model=os.getenv("VISUAL_MODEL", "siglip"),
@@ -68,4 +79,3 @@ def get_settings() -> Settings:
         gemini_generation_model=os.getenv("GEMINI_GENERATION_MODEL", "gemini-3.1-flash-lite"),
         cors_origins=origins,
     )
-

@@ -50,7 +50,7 @@ export default function StudyView({ sources = [] }) {
   }, [mode]);
 
   useEffect(() => {
-    fetchEntities({ limit: 100 }).then((payload) => setEntities(payload.entities || [])).catch(() => setEntities([]));
+    fetchEntities({ limit: 100, minSources: 2 }).then((payload) => setEntities(payload.entities || [])).catch(() => setEntities([]));
   }, []);
 
   async function loadDueCards() {

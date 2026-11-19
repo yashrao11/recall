@@ -116,7 +116,7 @@ describe("ConnectionsView", () => {
     vi.restoreAllMocks();
     vi.stubGlobal("fetch", vi.fn(async () => response({ entities: [], total: 0, limit: 24, offset: 0, has_more: false })));
     render(<ConnectionsView />);
-    expect(await screen.findByText("No entities found")).toBeInTheDocument();
+    expect(await screen.findByText("No meaningful entities found")).toBeInTheDocument();
   });
 
   it("renders a safe API error state", async () => {

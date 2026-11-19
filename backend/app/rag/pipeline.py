@@ -21,6 +21,7 @@ from app.retrieval.hybrid import retrieve_hybrid
 
 
 INSUFFICIENT_EVIDENCE = "I couldn't find enough indexed evidence to answer that question."
+NO_SOURCES_INDEXED = "No sources have been indexed yet. Capture or mount a file, then run indexing."
 MAX_CONTEXT_CHARS = 24000
 
 
@@ -46,17 +47,22 @@ def ask_question(
         evidence = _verified_evidence(connection, retrieval["results"])
 
         if not evidence:
+            indexed_count = connection.execute(
+                "SELECT COUNT(*) FROM sources WHERE indexing_status IN ('done', 'partial') AND excluded = 0"
+            ).fetchone()[0]
+            no_sources = indexed_count == 0
+            no_evidence_message = NO_SOURCES_INDEXED if no_sources else INSUFFICIENT_EVIDENCE
             assistant_message_id = append_message(
-                connection, conversation_id, "assistant", INSUFFICIENT_EVIDENCE
+                connection, conversation_id, "assistant", no_evidence_message
             )
             return _response(
                 conversation_id,
                 user_message_id,
                 assistant_message_id,
-                INSUFFICIENT_EVIDENCE,
+                no_evidence_message,
                 [],
                 retrieval,
-                "insufficient_evidence",
+                "no_sources_indexed" if no_sources else "insufficient_evidence",
                 0,
             )
 
@@ -96,6 +102,8 @@ def ask_question(
         valid_numbers = list(dict.fromkeys(valid_numbers))
         selected_citations = [citations[number - 1] for number in valid_numbers]
         answer = _remove_invalid_inline_citations(answer, len(citations))
+        if not selected_citations:
+            answer = INSUFFICIENT_EVIDENCE
         assistant_message_id = append_message(
             connection, conversation_id, "assistant", answer, selected_citations
         )
@@ -106,7 +114,7 @@ def ask_question(
             answer,
             selected_citations,
             retrieval,
-            "answered" if selected_citations else "answered_without_verified_citations",
+            "answered" if selected_citations else "insufficient_evidence",
             len(context),
         )
 
@@ -120,7 +128,7 @@ def _verified_evidence(connection: sqlite3.Connection, results: list[dict]) -> l
             continue
         row = connection.execute(
             "SELECT u.unit_id, u.source_id, u.page_or_slide, u.extracted_text, u.short_comment, "
-            "s.title, s.original_path, s.source_type "
+            "s.title, s.original_path, s.source_type, s.capture_url "
             "FROM document_units u JOIN sources s ON s.source_id = u.source_id WHERE u.unit_id = ?",
             (unit_id,),
         ).fetchone()
@@ -133,6 +141,7 @@ def _verified_evidence(connection: sqlite3.Connection, results: list[dict]) -> l
         item["title"] = row["title"]
         item["filename"] = Path(row["original_path"]).name
         item["source_type"] = row["source_type"]
+        item["capture_url"] = row["capture_url"]
         item["page"] = row["page_or_slide"]
         verified.append(item)
     return verified
@@ -152,7 +161,7 @@ def _build_context(evidence: list[dict], max_chars: int) -> tuple[str, list[dict
             "filename": result.get("filename"),
             "page": result.get("page"),
             "excerpt": excerpt,
-            "source_url": f"/sources/{int(result['source_id'])}/file",
+            "source_url": result.get("capture_url") or f"/sources/{int(result['source_id'])}/file",
         }
         block = (
             f"[{citation['reference']}] {citation['title']} ({citation['filename']})"

@@ -34,6 +34,7 @@ def list_entities(
     q: str | None = Query(default=None, max_length=200),
     type: str | None = Query(default=None, max_length=50),
     status_filter: str | None = Query(default=None, alias="status", max_length=20),
+    min_sources: int = Query(default=1, ge=1, le=100),
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
 ) -> dict:
@@ -54,6 +55,10 @@ def list_entities(
         where.append("(o.normalized_title LIKE ? OR LOWER(o.aliases_json) LIKE ?)")
         pattern = f"%{normalized_query.lower()}%"
         params.extend([pattern, pattern])
+    source_count_sql = "(SELECT COUNT(DISTINCT e2.source_id) FROM object_evidence e2 WHERE e2.object_id = o.object_id)"
+    if min_sources > 1:
+        where.append(f"({source_count_sql} >= ? OR o.created_by IN ('user', 'legacy'))")
+        params.append(min_sources)
     clause = " AND ".join(where)
     with get_connection(request.app.state.settings.database_path) as connection:
         total = connection.execute(
@@ -62,9 +67,10 @@ def list_entities(
         rows = connection.execute(
             "SELECT o.*, "
             "(SELECT COUNT(*) FROM object_evidence e WHERE e.object_id = o.object_id) AS evidence_count, "
+            f"{source_count_sql} AS source_count, "
             "(SELECT COUNT(*) FROM relationships r WHERE (r.from_object_id = o.object_id OR r.to_object_id = o.object_id) "
             "AND r.reviewed_status NOT IN ('rejected', 'unsupported')) AS relationship_count "
-            f"FROM objects o WHERE {clause} ORDER BY o.object_type, o.normalized_title, o.object_id "
+            f"FROM objects o WHERE {clause} ORDER BY source_count DESC, relationship_count DESC, o.object_type, o.normalized_title, o.object_id "
             "LIMIT ? OFFSET ?",
             [*params, limit, offset],
         ).fetchall()
@@ -309,6 +315,7 @@ def _entity_summary(row: sqlite3.Row | dict) -> dict:
         "updated_at": row["updated_at"],
         "evidence_count": int(row["evidence_count"]) if "evidence_count" in row.keys() else None,
         "relationship_count": int(row["relationship_count"]) if "relationship_count" in row.keys() else None,
+        "source_count": int(row["source_count"]) if "source_count" in row.keys() else None,
     }
 
 

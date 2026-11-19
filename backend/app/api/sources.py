@@ -134,6 +134,10 @@ def list_sources(request: Request, mount_id: int | None = None) -> dict:
     for source in source_rows:
         source["filename"] = Path(source.pop("original_path")).name
         source["available"] = not bool(source.get("excluded"))
+        source["status"] = (
+            "excluded" if source.get("excluded") else
+            {"done": "ready", "error": "failed"}.get(source["indexing_status"], source["indexing_status"])
+        )
         sources.append(source)
     return {"mounts": mounts, "sources": sources}
 

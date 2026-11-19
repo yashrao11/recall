@@ -144,8 +144,8 @@ def test_empty_retrieval_returns_controlled_insufficient_evidence(tmp_path: Path
 
     result = pipeline.ask_question(settings, "What is not in my library?", generation_provider=generation)
 
-    assert result["status"] == "insufficient_evidence"
-    assert result["answer"] == pipeline.INSUFFICIENT_EVIDENCE
+    assert result["status"] == "no_sources_indexed"
+    assert result["answer"] == pipeline.NO_SOURCES_INDEXED
     assert generation.prompts == []
 
 
@@ -193,7 +193,7 @@ def test_cloud_disabled_api_stores_local_conversation_without_generation(tmp_pat
         response = client.post("/ask", json={"question": "Tell me about private files."})
         assert response.status_code == 200
         payload = response.json()
-        assert payload["status"] == "insufficient_evidence"
+        assert payload["status"] == "no_sources_indexed"
         conversation_id = payload["conversation_id"]
         assert client.get(f"/conversations/{conversation_id}/messages").status_code == 200
         assert client.delete(f"/conversations/{conversation_id}").status_code == 204

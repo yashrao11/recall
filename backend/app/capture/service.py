@@ -9,10 +9,11 @@ import mimetypes
 import os
 from pathlib import Path
 import socket
+import ssl
 import tempfile
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import unquote, urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 from uuid import uuid4
 
 from app.ai.providers import (
@@ -31,7 +32,7 @@ MAX_TEXT_BYTES = 5 * 1024 * 1024
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_WEB_BYTES = 2 * 1024 * 1024
 WEB_TIMEOUT_SECONDS = 10
-ALLOWED_WEB_CONTENT_TYPES = {"text/html", "text/plain", "application/xhtml+xml"}
+ALLOWED_WEB_CONTENT_TYPES = {"text/html", "text/plain", "application/xhtml+xml", "application/pdf"}
 
 
 class CaptureError(ValueError):
@@ -204,6 +205,10 @@ def _webpage_data(payload: CapturePayload):
         raise CaptureError("url is required for webpage capture")
     url = _validate_url(payload.url)
     body, final_url, content_type = _fetch_webpage(url)
+    if content_type == "application/pdf":
+        url_title = Path(unquote(urlparse(final_url).path)).stem
+        title = _safe_title(payload.title or url_title or final_url)
+        return body, title, "pdf", "application/pdf", final_url
     title, text = _extract_web_text(body, content_type)
     if not text.strip():
         raise CaptureError("webpage did not contain extractable text")
@@ -260,7 +265,7 @@ def _validate_url(value: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
         raise CaptureError("url must be an http or https address without credentials")
     _assert_public_host(parsed.hostname)
-    return value.strip()
+    return parsed._replace(fragment="").geturl()
 
 
 def _assert_public_host(hostname: str) -> None:
@@ -284,7 +289,12 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
 
 
 def _fetch_webpage(url: str) -> tuple[bytes, str, str]:
-    opener = build_opener(_SafeRedirectHandler)
+    try:
+        import certifi
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        ssl_context = ssl.create_default_context()
+    opener = build_opener(_SafeRedirectHandler, HTTPSHandler(context=ssl_context))
     request = Request(url, headers={"User-Agent": "Recall/1.0"}, method="GET")
     try:
         with opener.open(request, timeout=WEB_TIMEOUT_SECONDS) as response:

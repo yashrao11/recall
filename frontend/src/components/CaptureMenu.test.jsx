@@ -20,7 +20,7 @@ describe("CaptureMenu", () => {
     await user.type(screen.getByLabelText("Note"), "Remember the retrieval design.");
     await user.click(screen.getByRole("button", { name: "Save to Recall" }));
     expect(await screen.findByText(/1 item received/)).toBeInTheDocument();
-    expect(screen.getByText(/Indexed · partial/)).toBeInTheDocument();
+    expect(screen.getByText(/Ready · partial/)).toBeInTheDocument();
     expect(onCaptured).toHaveBeenCalled();
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ type: "note", title: "Meeting note" });
   });

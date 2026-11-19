@@ -108,11 +108,12 @@ export async function completeStudySession({ sourceId = null, objectId = null, s
   });
 }
 
-export async function fetchEntities({ query = "", type = "", status = "", limit = 50, offset = 0 } = {}) {
+export async function fetchEntities({ query = "", type = "", status = "", minSources = 1, limit = 50, offset = 0 } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (query.trim()) params.set("q", query.trim());
   if (type) params.set("type", type);
   if (status) params.set("status", status);
+  if (minSources > 1) params.set("min_sources", String(minSources));
   return request(`/connections/entities?${params.toString()}`);
 }
 

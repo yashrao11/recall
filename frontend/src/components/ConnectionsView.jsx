@@ -24,6 +24,7 @@ export default function ConnectionsView({ sources = [] }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
+  const [minSources, setMinSources] = useState(2);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -44,7 +45,7 @@ export default function ConnectionsView({ sources = [] }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchEntities({ query, type, status, limit: 24, offset: page * 24 })
+    fetchEntities({ query, type, status, minSources, limit: 24, offset: page * 24 })
       .then((payload) => {
         if (cancelled) return;
         setEntities(payload.entities || []);
@@ -55,7 +56,7 @@ export default function ConnectionsView({ sources = [] }) {
       .catch((reason) => !cancelled && setError(reason.message))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [query, type, status, page]);
+  }, [query, type, status, minSources, page]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -85,7 +86,7 @@ export default function ConnectionsView({ sources = [] }) {
     setNotice(message);
     if (selectedId) setDetail(await fetchEntityDetail(selectedId, includeUnsupported));
     if (sourceId) setSourceDetail(await fetchSourceConnections(sourceId, includeUnsupported));
-    const payload = await fetchEntities({ query, type, status, limit: 24, offset: page * 24 });
+    const payload = await fetchEntities({ query, type, status, minSources, limit: 24, offset: page * 24 });
     setEntities(payload.entities || []);
     setTotal(payload.total || 0);
   }
@@ -115,6 +116,7 @@ export default function ConnectionsView({ sources = [] }) {
       <form onSubmit={(event) => { event.preventDefault(); setQuery(searchInput.trim()); setPage(0); }} className="connection-search"><span>⌕</span><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search entities or aliases" aria-label="Search entities" /></form>
       <select value={type} onChange={(event) => { setType(event.target.value); setPage(0); }} aria-label="Filter by entity type"><option value="">All types</option><option value="person">People</option><option value="project">Projects</option><option value="organization">Organizations</option><option value="place">Places</option><option value="event">Events</option><option value="topic">Topics</option><option value="concept">Concepts</option></select>
       <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(0); }} aria-label="Filter by status"><option value="">Active entities</option><option value="needs-review">Needs review</option><option value="inactive">Inactive</option></select>
+      <select value={minSources} onChange={(event) => { setMinSources(Number(event.target.value)); setPage(0); }} aria-label="Filter by source support"><option value="2">Supported by 2+ sources</option><option value="1">Show single-source entities</option></select>
       <select value={sourceId} onChange={(event) => selectSource(event.target.value)} aria-label="Explore source"><option value="">Explore a source…</option>{sources.map((item) => <option key={item.source_id} value={item.source_id}>{item.title || item.filename || `Source ${item.source_id}`}</option>)}</select>
     </div>
     {notice && <div className="connection-notice">{notice}<button onClick={() => setNotice("")}>×</button></div>}
@@ -122,7 +124,7 @@ export default function ConnectionsView({ sources = [] }) {
     <div className="connections-layout">
       <div className="connections-list-panel">
         <div className="panel-heading"><div><span className="eyebrow">Entities</span><strong>{total} discovered</strong></div><span>{page + 1} / {Math.max(1, Math.ceil(total / 24))}</span></div>
-        {loading ? <div className="connection-state">Loading entities…</div> : entities.length ? <div className="entity-list">{entities.map((entity) => <button key={entity.object_id} className={`entity-card ${selectedId === entity.object_id ? "selected" : ""}`} onClick={() => { setSelectedId(entity.object_id); setSourceId(""); }}><span className="entity-type">{entity.object_type}</span><strong>{entity.title}</strong>{entity.aliases?.length > 0 && <small>{entity.aliases.slice(0, 2).join(" · ")}</small>}<span className="entity-meta">{entity.relationship_count || 0} connections · {entity.evidence_count || 0} sources</span></button>)}</div> : <div className="connection-state"><strong>No entities found</strong><span>Try a different search or filter.</span></div>}
+        {loading ? <div className="connection-state">Loading entities…</div> : entities.length ? <div className="entity-list">{entities.map((entity) => <button key={entity.object_id} className={`entity-card ${selectedId === entity.object_id ? "selected" : ""}`} onClick={() => { setSelectedId(entity.object_id); setSourceId(""); }}><span className="entity-type">{entity.object_type}</span><strong>{entity.title}</strong>{entity.aliases?.length > 0 && <small>{entity.aliases.slice(0, 2).join(" · ")}</small>}<span className="entity-meta">{entity.relationship_count || 0} connections · {entity.source_count || 0} supporting sources</span></button>)}</div> : <div className="connection-state"><strong>No meaningful entities found</strong><span>Try a different search, show single-source entities, or index more files.</span></div>}
         <div className="pagination"><button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button><button disabled={(page + 1) * 24 >= total} onClick={() => setPage(page + 1)}>Next</button></div>
       </div>
       <div className="connection-detail-panel">

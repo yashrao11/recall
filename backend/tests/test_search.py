@@ -36,6 +36,15 @@ def test_keyword_search_sanitises_fts_operators(tmp_path: Path) -> None:
         assert response.json()["results"][0]["title"] == "attention.md"
 
 
+def test_keyword_search_finds_filename_metadata(tmp_path: Path) -> None:
+    app, _, _ = build_indexed_app(tmp_path)
+    with TestClient(app) as client:
+        response = client.get("/search", params={"q": "my md", "mode": "keyword"})
+    assert response.status_code == 200
+    assert response.json()["results"]
+    assert response.json()["results"][0]["match_type"] == ["filename"]
+
+
 def test_source_file_and_delete_remove_indexed_content(tmp_path: Path) -> None:
     app, source_id, source_path = build_indexed_app(tmp_path)
     with TestClient(app) as client:

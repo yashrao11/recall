@@ -9,7 +9,7 @@ from app.ai.providers import (
     build_metadata_provider,
     provider_status,
 )
-from app.ingestion.indexer import run_pending
+from app.ingestion.indexer import queue_reindex, run_pending
 
 router = APIRouter(prefix="/index", tags=["indexing"])
 
@@ -25,6 +25,9 @@ def indexing_status(request: Request) -> dict:
                 "SELECT indexing_status, COUNT(*) AS count FROM sources GROUP BY indexing_status"
             )
         }
+        excluded = connection.execute(
+            "SELECT COUNT(*) FROM sources WHERE excluded = 1"
+        ).fetchone()[0]
         mounts = connection.execute("SELECT COUNT(*) FROM folder_mounts WHERE enabled = 1").fetchone()[0]
     return {
         "mounts": mounts,
@@ -32,8 +35,11 @@ def indexing_status(request: Request) -> dict:
         "pending": counts.get("pending", 0),
         "processing": counts.get("processing", 0),
         "done": counts.get("done", 0),
+        "ready": counts.get("done", 0),
         "partial": counts.get("partial", 0),
         "errors": counts.get("error", 0),
+        "failed": counts.get("error", 0),
+        "excluded": excluded,
         "paused": request.app.state.indexing_paused,
     }
 
@@ -51,10 +57,11 @@ def resume_indexing(request: Request) -> dict:
 
 
 @router.post("/run")
-def run_indexing(request: Request, mount_id: int | None = None) -> dict:
+def run_indexing(request: Request, mount_id: int | None = None, reindex_existing: bool = False) -> dict:
     if request.app.state.indexing_paused:
         return {"queued": 0, "completed": 0, "partial": 0, "errors": 0, "paused": True}
     settings = request.app.state.settings
+    requeued = queue_reindex(settings, mount_id) if reindex_existing else 0
     embedding_provider = None
     warnings: list[str] = []
     try:
@@ -72,6 +79,7 @@ def run_indexing(request: Request, mount_id: int | None = None) -> dict:
     warnings.extend(str(item) for item in result.get("warnings", []))
     result.update(
         {
+            "requeued": requeued,
             "cloud_ai_permitted": settings.allow_cloud_ai,
             "embedding_operational": embedding_provider is not None,
             "warnings": warnings,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API, request, revealSource } from "../api";
 
 const SEARCH_MODES = ["keyword", "semantic", "visual", "hybrid", "hybrid_rerank"];
@@ -9,6 +9,14 @@ export default function SearchView({ initialQuery = "" }) {
   const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [searched, setSearched] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    function focusSearch() { inputRef.current?.focus(); }
+    window.addEventListener("recall:focus-search", focusSearch);
+    return () => window.removeEventListener("recall:focus-search", focusSearch);
+  }, []);
 
   async function search(event) {
     event?.preventDefault();
@@ -18,6 +26,7 @@ export default function SearchView({ initialQuery = "" }) {
     try {
       const payload = await request(`/search?q=${encodeURIComponent(query.trim())}&mode=${mode}`);
       setResults(payload.results || payload || []);
+      setSearched(true);
     } catch (error) {
       setResults([]);
       setMessage(error.message);
@@ -35,7 +44,7 @@ export default function SearchView({ initialQuery = "" }) {
     <form className="search-form" onSubmit={search}>
       <div className="premium-search">
         <span>⌕</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your memories…" autoFocus />
+        <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files and passages…" autoFocus />
         <button type="submit">{busy ? "Searching…" : "Search"}</button>
       </div>
       <div className="mode-pills">
@@ -47,7 +56,7 @@ export default function SearchView({ initialQuery = "" }) {
       <div className="search-results-heading"><span>{results.length} results</span><span>{mode}</span></div>
       {results.map((result, index) => <SearchResult key={result.unit_id || result.source_id || index} result={result} mode={mode} index={index} />)}
     </div>}
-    {!busy && !results.length && !message && <div className="memory-empty"><div className="empty-orbit">⌕</div><h3>Your memories are waiting</h3><p>Try a keyword, a visual description, or a hybrid search.</p></div>}
+    {!busy && !results.length && !message && <div className="memory-empty"><div className="empty-orbit">⌕</div><h3>{searched ? "No matching indexed file was found." : "Search your indexed files"}</h3><p>{searched ? "Try a filename, exact phrase, or a different retrieval mode." : "Find files and relevant passages with keyword, semantic, visual, or hybrid search."}</p></div>}
   </section>;
 }
 
@@ -68,7 +77,7 @@ function SearchResult({ result, mode, index }) {
       {result.thumbnail_url ? <img src={`${API}${result.thumbnail_url}`} alt="" /> : <div className="result-icon">{result.file_type === "pdf" ? "▧" : "✦"}</div>}
     </div>
     <div>
-      <div className="memory-card-meta"><span className="event-badge">{result.match_type || mode}</span>{result.visual_match && <span className="visual-pill">Visual match</span>}</div>
+          <div className="memory-card-meta"><span className="event-badge">{Array.isArray(result.match_type) ? result.match_type.join(" · ") : result.match_type || mode}</span>{result.visual_match && <span className="visual-pill">Visual match</span>}</div>
       <h3>{result.title || result.filename || "Untitled result"}</h3>
       <p>{result.snippet || result.text || "Indexed memory"}</p>
       <small>{result.page ? `Page ${result.page} · ` : ""}{result.source_id || ""}</small>

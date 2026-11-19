@@ -55,11 +55,13 @@ export default function CaptureMenu({ onClose, onCaptured }) {
             source_id: source.source_id,
             title: source.title || source.filename,
             filename: source.filename,
-            status: source.excluded
+            status: source.status === "excluded"
               ? "unavailable"
-              : ["done", "partial"].includes(source.indexing_status)
+              : source.status === "ready"
               ? "indexed"
-              : source.indexing_status === "error" ? "error" : source.indexing_status,
+              : source.status === "partial"
+              ? "partial"
+              : source.status === "failed" ? "error" : source.status,
             indexing_status: source.indexing_status,
             error: source.indexing_error,
           })),
@@ -125,7 +127,7 @@ export default function CaptureMenu({ onClose, onCaptured }) {
         <button className="primary-button" disabled={busy}>{busy ? "Saving…" : tab === "folder" ? "Mount and index" : "Save to Recall"}</button>
       </form>
       {message && <div className={`capture-message ${message.kind}`}>{message.text}</div>}
-      {results.length > 0 && <div className="capture-results"><strong>Processing results</strong>{results.map((item, index) => <div className="capture-result" key={`${item.source_id || item.filename || index}`}><span><b>{item.title || item.filename || "Capture"}</b><small>{item.status === "indexed" ? `Indexed · ${item.indexing_status || "ready"}` : item.status === "duplicate" ? "Already captured" : item.status === "error" ? `Captured, indexing failed${item.error ? ` · ${item.error}` : ""}` : item.status === "unavailable" ? `File unavailable${item.error ? ` · ${item.error}` : ""}` : item.status === "pending" ? "Waiting for indexing" : item.status === "processing" ? "Indexing…" : item.error || "Rejected"}</small></span>{item.status === "error" && item.source_id && <button onClick={() => retry(item)} disabled={busy}>Retry</button>}</div>)}</div>}
+      {results.length > 0 && <div className="capture-results"><strong>Processing results</strong>{results.map((item, index) => <div className="capture-result" key={`${item.source_id || item.filename || index}`}><span><b>{item.title || item.filename || "Capture"}</b><small>{item.status === "indexed" ? `Ready · ${item.indexing_status || "done"}` : item.status === "partial" ? "Partial · text is searchable; optional AI work is unavailable" : item.status === "duplicate" ? "Already captured" : item.status === "error" ? `Failed · ${item.error || "indexing failed"}` : item.status === "unavailable" ? `Excluded · file unavailable${item.error ? ` · ${item.error}` : ""}` : item.status === "pending" ? "Waiting for indexing" : item.status === "processing" ? "Indexing…" : item.error || "Rejected"}</small></span>{item.status === "error" && item.source_id && <button onClick={() => retry(item)} disabled={busy}>Retry</button>}</div>)}</div>}
     </div>
   </div>;
 }

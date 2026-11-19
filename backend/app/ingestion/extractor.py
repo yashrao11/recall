@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -93,7 +94,8 @@ def _extract_pptx(path: Path) -> list[ExtractedUnit]:
 
 def _ocr_image(image_bytes: bytes) -> str | None:
     """Use an already-installed local Tesseract binary without adding a model dependency."""
-    executable = shutil.which("tesseract")
+    configured = os.getenv("TESSERACT_CMD", "").strip()
+    executable = configured if configured and Path(configured).is_file() else shutil.which("tesseract")
     if executable is None:
         return None
     try:

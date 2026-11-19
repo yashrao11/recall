@@ -173,8 +173,9 @@ flowchart LR
 ```
 
 The assistant answers only from retrieved content, cites each claim, and never implies it searched
-files that were not indexed. The LLM provider is swappable (Claude or OpenAI API, or a local model via
-Ollama). Sending content to a cloud provider is an explicit, visible opt-in.
+files that were not indexed. Gemini is the configured cloud provider for embeddings and grounded
+generation; keyword search and local metadata heuristics remain available without cloud AI.
+Sending content to a cloud provider is an explicit, visible opt-in.
 
 ### 4.5 Knowledge map
 
@@ -227,7 +228,7 @@ flowchart TB
       R1["Query understanding"] --> R2["Keyword + semantic + visual"]
       R2 --> R3["Fusion + rerank"]
     end
-    AI["AI provider layer<br/>Claude / OpenAI / Ollama"]
+    AI["AI provider layer<br/>Gemini (opt-in) / local heuristics"]
     WK["Background workers"]
   end
 
@@ -278,7 +279,7 @@ flowchart TB
 | Visual retrieval | ColPali / ColQwen2 (SigLIP or CLIP fallback) |
 | Reranking | Cross-encoder reranker (BGE reranker) |
 | Audio | faster-whisper |
-| LLM | Claude or OpenAI API; optional local model via Ollama |
+| LLM | Gemini Interactions API; optional and disabled unless explicitly enabled |
 | Engineering | Git, pytest, structured logging, Docker (optional) |
 
 **Deliberately deferred:** Vespa (only if multi-vector scale demands it), cloud sync, mobile capture,

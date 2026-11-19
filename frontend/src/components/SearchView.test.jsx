@@ -13,7 +13,7 @@ describe("SearchView", () => {
     })));
 
     render(<SearchView />);
-    fireEvent.change(screen.getByPlaceholderText("Search your memories…"), { target: { value: "residual" } });
+    fireEvent.change(screen.getByPlaceholderText("Search files and passages…"), { target: { value: "residual" } });
     fireEvent.submit(screen.getByRole("button", { name: "Search" }).closest("form"));
 
     await waitFor(() => expect(screen.getByRole("link", { name: /Architecture notes/ })).toHaveAttribute(
