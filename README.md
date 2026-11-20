@@ -439,6 +439,7 @@ then search.
 | `DATA_DIR` | Where the index, thumbnails and database are stored |
 | `LLM_PROVIDER` | `gemini` (Ask My Memory generation provider) |
 | `GEMINI_GENERATION_MODEL` | Configurable Gemini generation model; defaults to `gemini-3.1-flash-lite` |
+| `GEMINI_GENERATION_FALLBACK_MODELS` | Comma-separated ordered fallback models for transient Gemini generation failures; defaults to `gemini-3.5-flash-lite,gemini-3.8-flash,gemini-2.5-flash-lite,gemini-2.5-flash` |
 | `GEMINI_API_KEY` | Gemini API key, used only when cloud AI is explicitly enabled |
 | `ALLOW_CLOUD_AI` | `false` by default; must be enabled to send content to a cloud LLM |
 | `VISUAL_MODEL` | `colqwen2`, `colpali` or `siglip` |

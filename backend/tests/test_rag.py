@@ -1,9 +1,11 @@
 from pathlib import Path
 import json
 
+import pytest
+
 from fastapi.testclient import TestClient
 
-from app.ai.generation import GeminiGenerationProvider
+from app.ai.generation import GeminiGenerationProvider, GenerationProviderError
 from app.config import Settings
 from app.db.database import get_connection, initialize_database
 from app.main import create_app
@@ -269,3 +271,64 @@ def test_generation_provider_uses_interactions_store_false_without_network(tmp_p
     assert calls[0]["store"] is False
     assert calls[0]["input"] == "grounded prompt"
     assert calls[0]["system_instruction"] == "grounding rules"
+
+
+def test_generation_provider_falls_back_after_rate_limit(tmp_path: Path, monkeypatch) -> None:
+    import google.genai as genai
+
+    calls = []
+
+    class RateLimitError(Exception):
+        code = 429
+
+    class Interactions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["model"] == "primary-model":
+                raise RateLimitError("quota")
+            return type("Interaction", (), {"output_text": "fallback answer"})()
+
+    monkeypatch.setattr(genai, "Client", lambda api_key: type("Client", (), {"interactions": Interactions()})())
+    provider = GeminiGenerationProvider(
+        api_key="secret",
+        allow_cloud_ai=True,
+        model="primary-model",
+        fallback_models=("fallback-model",),
+    )
+    database_path = tmp_path / "recall.sqlite3"
+    initialize_database(database_path)
+    with get_connection(database_path) as connection:
+        assert provider.generate("grounded prompt", "fallback-hash", connection) == "fallback answer"
+
+    assert [call["model"] for call in calls] == ["primary-model", "fallback-model"]
+    assert all(call["store"] is False for call in calls)
+    assert provider.last_successful_model == "fallback-model"
+
+
+def test_generation_provider_does_not_rotate_on_authentication_failure(tmp_path: Path, monkeypatch) -> None:
+    import google.genai as genai
+
+    calls = []
+
+    class AuthenticationError(Exception):
+        code = 401
+
+    class Interactions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            raise AuthenticationError("invalid key")
+
+    monkeypatch.setattr(genai, "Client", lambda api_key: type("Client", (), {"interactions": Interactions()})())
+    provider = GeminiGenerationProvider(
+        api_key="secret",
+        allow_cloud_ai=True,
+        model="primary-model",
+        fallback_models=("fallback-model",),
+    )
+    database_path = tmp_path / "recall.sqlite3"
+    initialize_database(database_path)
+    with get_connection(database_path) as connection:
+        with pytest.raises(GenerationProviderError):
+            provider.generate("grounded prompt", "auth-hash", connection)
+
+    assert [call["model"] for call in calls] == ["primary-model"]

@@ -48,6 +48,12 @@ class Settings:
     gemini_embedding_model: str = "gemini-embedding-2"
     gemini_metadata_model: str = "gemini-2.5-flash"
     gemini_generation_model: str = "gemini-3.1-flash-lite"
+    gemini_generation_fallback_models: tuple[str, ...] = (
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+    )
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"])
 
     @property
@@ -64,6 +70,14 @@ def get_settings() -> Settings:
     load_project_environment()
     raw_origins = os.getenv("CORS_ORIGINS")
     origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()] if raw_origins else []
+    fallback_models = tuple(
+        model.strip()
+        for model in os.getenv(
+            "GEMINI_GENERATION_FALLBACK_MODELS",
+            "gemini-3.5-flash-lite,gemini-3.8-flash,gemini-2.5-flash-lite,gemini-2.5-flash",
+        ).split(",")
+        if model.strip()
+    )
     for port in (5173, 5174, 5175):
         for host in ("localhost", "127.0.0.1"):
             origin = f"http://{host}:{port}"
@@ -82,5 +96,6 @@ def get_settings() -> Settings:
         gemini_embedding_model=os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2"),
         gemini_metadata_model=os.getenv("GEMINI_METADATA_MODEL", "gemini-2.5-flash"),
         gemini_generation_model=os.getenv("GEMINI_GENERATION_MODEL", "gemini-3.1-flash-lite"),
+        gemini_generation_fallback_models=fallback_models,
         cors_origins=origins,
     )

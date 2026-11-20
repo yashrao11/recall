@@ -358,6 +358,7 @@ def provider_status(settings: Settings) -> dict[str, object]:
         "active_metadata_provider": active_metadata,
         "active_generation_provider": active_generation,
         "generation_model": settings.gemini_generation_model,
+        "generation_models": [settings.gemini_generation_model, *settings.gemini_generation_fallback_models],
         "local_fallback_availability": {
             "keyword_search": True,
             "metadata_heuristic": True,

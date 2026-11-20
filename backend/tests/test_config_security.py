@@ -35,6 +35,19 @@ def test_project_dotenv_loads_and_os_environment_wins(tmp_path: Path, monkeypatc
     config.get_settings.cache_clear()
 
 
+def test_generation_fallback_models_are_configurable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setenv("GEMINI_GENERATION_MODEL", "primary-model")
+    monkeypatch.setenv("GEMINI_GENERATION_FALLBACK_MODELS", "fallback-a, fallback-b, fallback-a")
+    config.get_settings.cache_clear()
+
+    settings = config.get_settings()
+
+    assert settings.gemini_generation_model == "primary-model"
+    assert settings.gemini_generation_fallback_models == ("fallback-a", "fallback-b", "fallback-a")
+    config.get_settings.cache_clear()
+
+
 def test_cloud_disabled_blocks_gemini_factory_and_execution(monkeypatch) -> None:
     settings = Settings(allow_cloud_ai=False, embedding_provider="gemini", gemini_api_key="secret")
     real_gemini_provider = providers.GeminiProvider
